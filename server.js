@@ -1,5 +1,4 @@
 const express = require('express');
-const { Client } = require('@notionhq/client');
 const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
@@ -7,30 +6,64 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Notion 클라이언트 초기화
-const notion = new Client({
-  auth: process.env.NOTION_API_KEY
-});
-
-const DATABASE_ID = process.env.NOTION_DATABASE_ID;
+const TALLY_API_KEY = process.env.TALLY_API_KEY;
+const FORM_ID = 'ob9Bkx';
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
+// Tally API에서 모든 제출 데이터 가져오기
+async function fetchAllSubmissions() {
+  let allSubmissions = [];
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    const response = await fetch(`https://api.tally.so/forms/${FORM_ID}/submissions?page=${page}&limit=100`, {
+      headers: {
+        'Authorization': `Bearer ${TALLY_API_KEY}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Tally API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    allSubmissions = allSubmissions.concat(data.data || []);
+
+    hasMore = data.hasMore || false;
+    page++;
+  }
+
+  return allSubmissions;
+}
+
+// 제출 데이터에서 필드 값 추출
+function getFieldValue(submission, fieldName) {
+  const field = submission.fields.find(f => f.label === fieldName);
+  if (!field) return null;
+
+  if (field.type === 'INPUT_DATE') {
+    return field.value; // YYYY-MM-DD 형식
+  }
+  if (field.type === 'INPUT_NUMBER') {
+    return parseInt(field.value) || 0;
+  }
+  return field.value;
+}
+
 // 사번 목록 조회 API
 app.get('/api/members', async (req, res) => {
   try {
-    const response = await notion.databases.query({
-      database_id: DATABASE_ID,
-      page_size: 100
-    });
+    const submissions = await fetchAllSubmissions();
 
     // 중복 제거된 사번 목록
     const members = [...new Set(
-      response.results
-        .map(page => page.properties['본인 사번']?.number)
-        .filter(num => num !== null && num !== undefined)
+      submissions
+        .map(sub => getFieldValue(sub, '본인 사번'))
+        .filter(num => num !== null && num !== undefined && num > 0)
     )].sort((a, b) => a - b);
 
     res.json({ members });
@@ -45,55 +78,27 @@ app.get('/api/activity', async (req, res) => {
   try {
     const { memberId, startDate, endDate } = req.query;
 
-    // 필터 조건 생성
-    const filters = [];
+    let submissions = await fetchAllSubmissions();
 
+    // 필터 적용
     if (memberId) {
-      filters.push({
-        property: '본인 사번',
-        number: { equals: parseInt(memberId) }
-      });
+      submissions = submissions.filter(sub =>
+        getFieldValue(sub, '본인 사번') === parseInt(memberId)
+      );
     }
 
     if (startDate) {
-      filters.push({
-        property: '날짜',
-        date: { on_or_after: startDate }
+      submissions = submissions.filter(sub => {
+        const date = getFieldValue(sub, '날짜');
+        return date && date >= startDate;
       });
     }
 
     if (endDate) {
-      filters.push({
-        property: '날짜',
-        date: { on_or_before: endDate }
+      submissions = submissions.filter(sub => {
+        const date = getFieldValue(sub, '날짜');
+        return date && date <= endDate;
       });
-    }
-
-    const queryOptions = {
-      database_id: DATABASE_ID,
-      page_size: 100
-    };
-
-    if (filters.length > 0) {
-      queryOptions.filter = filters.length === 1
-        ? filters[0]
-        : { and: filters };
-    }
-
-    // 페이지네이션 처리하여 모든 데이터 가져오기
-    let allResults = [];
-    let hasMore = true;
-    let startCursor = undefined;
-
-    while (hasMore) {
-      const response = await notion.databases.query({
-        ...queryOptions,
-        start_cursor: startCursor
-      });
-
-      allResults = allResults.concat(response.results);
-      hasMore = response.has_more;
-      startCursor = response.next_cursor;
     }
 
     // 데이터 집계
@@ -102,15 +107,14 @@ app.get('/api/activity', async (req, res) => {
       OT: 0,
       MCS: 0,
       소개: 0,
-      count: allResults.length
+      count: submissions.length
     };
 
-    allResults.forEach(page => {
-      const props = page.properties;
-      totals.TA += props['TA']?.number || 0;
-      totals.OT += props['OT']?.number || 0;
-      totals.MCS += props['MCS']?.number || 0;
-      totals.소개 += props['소개 (사람수)']?.number || 0;
+    submissions.forEach(sub => {
+      totals.TA += getFieldValue(sub, 'TA') || 0;
+      totals.OT += getFieldValue(sub, 'OT') || 0;
+      totals.MCS += getFieldValue(sub, 'MCS') || 0;
+      totals.소개 += getFieldValue(sub, '소개 (사람수)') || 0;
     });
 
     // 전환율 계산
@@ -140,7 +144,7 @@ app.get('/api/activity', async (req, res) => {
     res.json({
       totals,
       funnel,
-      recordCount: allResults.length
+      recordCount: submissions.length
     });
   } catch (error) {
     console.error('Error fetching activity:', error);

@@ -5,9 +5,7 @@ services:
     buildCommand: npm install
     startCommand: npm start
     envVars:
-      - key: NOTION_API_KEY
+      - key: TALLY_API_KEY
         sync: false
-      - key: NOTION_DATABASE_ID
-        value: 0a5211a7ae624559a24777e8b70d0d57
       - key: NODE_ENV
         value: production
