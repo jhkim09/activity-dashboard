@@ -44,7 +44,10 @@ async function fetchAllSubmissions() {
 
     const data = await response.json();
     console.log('Data received, count:', data.submissions?.length || 0);
-    console.log('Total submissions:', data.totalNumberOfSubmissionsPerFilter);
+    if (page === 1 && data.submissions?.length > 0) {
+      console.log('First submission keys:', Object.keys(data.submissions[0]));
+      console.log('First submission sample:', JSON.stringify(data.submissions[0]).substring(0, 800));
+    }
     allSubmissions = allSubmissions.concat(data.submissions || []);
 
     hasMore = data.hasMore || false;
