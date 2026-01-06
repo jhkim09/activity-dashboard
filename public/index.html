@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Activity Data Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; }
+        .funnel-stage {
+            transition: all 0.3s ease;
+        }
+        .funnel-stage:hover {
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+        <!-- Header -->
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Activity Data Dashboard</h1>
+            <p class="text-gray-600 mt-2">TA → OT → MCS → 소개 퍼널 분석</p>
+        </header>
+
+        <!-- Filters -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <div class="grid md:grid-cols-4 gap-4 items-end">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">사번</label>
+                    <select id="memberSelect" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <option value="">전체</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">시작일</label>
+                    <input type="date" id="startDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">종료일</label>
+                    <input type="date" id="endDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                <div>
+                    <button onclick="loadData()" class="w-full bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition font-medium">
+                        조회
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading -->
+        <div id="loading" class="hidden text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+            <p class="mt-4 text-gray-600">데이터 로딩 중...</p>
+        </div>
+
+        <!-- Funnel Chart -->
+        <div id="dashboard" class="hidden">
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white funnel-stage">
+                    <p class="text-blue-100 text-sm font-medium">TA</p>
+                    <p id="ta-value" class="text-3xl font-bold mt-2">0</p>
+                    <p class="text-blue-200 text-sm mt-1">100%</p>
+                </div>
+                <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 text-white funnel-stage">
+                    <p class="text-green-100 text-sm font-medium">OT</p>
+                    <p id="ot-value" class="text-3xl font-bold mt-2">0</p>
+                    <p id="ot-rate" class="text-green-200 text-sm mt-1">0%</p>
+                </div>
+                <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-6 text-white funnel-stage">
+                    <p class="text-purple-100 text-sm font-medium">MCS</p>
+                    <p id="mcs-value" class="text-3xl font-bold mt-2">0</p>
+                    <p id="mcs-rate" class="text-purple-200 text-sm mt-1">0%</p>
+                </div>
+                <div class="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-6 text-white funnel-stage">
+                    <p class="text-orange-100 text-sm font-medium">소개</p>
+                    <p id="intro-value" class="text-3xl font-bold mt-2">0</p>
+                    <p id="intro-rate" class="text-orange-200 text-sm mt-1">0%</p>
+                </div>
+            </div>
+
+            <!-- Funnel Visual -->
+            <div class="bg-white rounded-xl shadow-lg p-8 mb-8">
+                <h2 class="text-xl font-bold text-gray-800 mb-6">퍼널 차트</h2>
+                <div class="flex items-center justify-center">
+                    <canvas id="funnelChart" width="600" height="300"></canvas>
+                </div>
+            </div>
+
+            <!-- Record Count -->
+            <div class="text-center text-gray-500 text-sm">
+                <span id="recordCount">0</span>개 레코드 조회됨
+            </div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="hidden text-center py-12">
+            <svg class="mx-auto h-16 w-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            <p class="mt-4 text-gray-600">조건에 맞는 데이터가 없습니다.</p>
+        </div>
+    </div>
+
+    <script>
+        let funnelChart = null;
+
+        // 페이지 로드 시 사번 목록 가져오기
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadMembers();
+
+            // 기본 날짜 설정 (이번 달)
+            const now = new Date();
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+            document.getElementById('startDate').value = firstDay.toISOString().split('T')[0];
+            document.getElementById('endDate').value = now.toISOString().split('T')[0];
+
+            // 초기 데이터 로드
+            await loadData();
+        });
+
+        async function loadMembers() {
+            try {
+                const response = await fetch('/api/members');
+                const data = await response.json();
+
+                const select = document.getElementById('memberSelect');
+                data.members.forEach(member => {
+                    const option = document.createElement('option');
+                    option.value = member;
+                    option.textContent = member;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading members:', error);
+            }
+        }
+
+        async function loadData() {
+            const memberId = document.getElementById('memberSelect').value;
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+
+            // UI 상태 관리
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('dashboard').classList.add('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+
+            try {
+                const params = new URLSearchParams();
+                if (memberId) params.append('memberId', memberId);
+                if (startDate) params.append('startDate', startDate);
+                if (endDate) params.append('endDate', endDate);
+
+                const response = await fetch(`/api/activity?${params}`);
+                const data = await response.json();
+
+                document.getElementById('loading').classList.add('hidden');
+
+                if (data.recordCount === 0) {
+                    document.getElementById('emptyState').classList.remove('hidden');
+                    return;
+                }
+
+                // 값 업데이트
+                document.getElementById('ta-value').textContent = data.funnel[0].value.toLocaleString();
+                document.getElementById('ot-value').textContent = data.funnel[1].value.toLocaleString();
+                document.getElementById('ot-rate').textContent = `${data.funnel[1].rate}%`;
+                document.getElementById('mcs-value').textContent = data.funnel[2].value.toLocaleString();
+                document.getElementById('mcs-rate').textContent = `${data.funnel[2].rate}%`;
+                document.getElementById('intro-value').textContent = data.funnel[3].value.toLocaleString();
+                document.getElementById('intro-rate').textContent = `${data.funnel[3].rate}%`;
+                document.getElementById('recordCount').textContent = data.recordCount;
+
+                // 차트 업데이트
+                updateChart(data.funnel);
+
+                document.getElementById('dashboard').classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading data:', error);
+                document.getElementById('loading').classList.add('hidden');
+                alert('데이터 로딩 중 오류가 발생했습니다.');
+            }
+        }
+
+        function updateChart(funnel) {
+            const ctx = document.getElementById('funnelChart').getContext('2d');
+
+            if (funnelChart) {
+                funnelChart.destroy();
+            }
+
+            const labels = funnel.map(f => f.stage);
+            const values = funnel.map(f => f.value);
+            const colors = ['#3B82F6', '#22C55E', '#A855F7', '#F97316'];
+
+            funnelChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '인원수',
+                        data: values,
+                        backgroundColor: colors,
+                        borderColor: colors,
+                        borderWidth: 1,
+                        borderRadius: 8,
+                        barThickness: 80
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const rate = funnel[context.dataIndex].rate;
+                                    return `${context.parsed.y}명 (${rate}%)`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: '#E5E7EB'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
