@@ -19,18 +19,31 @@ async function fetchAllSubmissions() {
   let page = 1;
   let hasMore = true;
 
+  console.log('TALLY_API_KEY exists:', !!TALLY_API_KEY);
+  console.log('TALLY_API_KEY prefix:', TALLY_API_KEY ? TALLY_API_KEY.substring(0, 8) : 'none');
+
   while (hasMore) {
-    const response = await fetch(`https://api.tally.so/forms/${FORM_ID}/submissions?page=${page}&limit=100`, {
+    const url = `https://api.tally.so/forms/${FORM_ID}/submissions?page=${page}&limit=100`;
+    console.log('Fetching:', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
       headers: {
-        'Authorization': `Bearer ${TALLY_API_KEY}`
+        'Authorization': `Bearer ${TALLY_API_KEY}`,
+        'Content-Type': 'application/json'
       }
     });
 
+    console.log('Response status:', response.status);
+
     if (!response.ok) {
-      throw new Error(`Tally API error: ${response.status}`);
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`Tally API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
+    console.log('Data received, count:', data.data?.length || 0);
     allSubmissions = allSubmissions.concat(data.data || []);
 
     hasMore = data.hasMore || false;
