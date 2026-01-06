@@ -13,18 +13,17 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
+// 질문 ID를 라벨로 매핑
+let questionMap = {};
+
 // Tally API에서 모든 제출 데이터 가져오기
 async function fetchAllSubmissions() {
   let allSubmissions = [];
   let page = 1;
   let hasMore = true;
 
-  console.log('TALLY_API_KEY exists:', !!TALLY_API_KEY);
-  console.log('TALLY_API_KEY prefix:', TALLY_API_KEY ? TALLY_API_KEY.substring(0, 8) : 'none');
-
   while (hasMore) {
     const url = `https://api.tally.so/forms/${FORM_ID}/submissions?page=${page}`;
-    console.log('Fetching:', url);
 
     const response = await fetch(url, {
       method: 'GET',
@@ -34,41 +33,43 @@ async function fetchAllSubmissions() {
       }
     });
 
-    console.log('Response status:', response.status);
-
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Error response:', errorText);
       throw new Error(`Tally API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    console.log('Data received, count:', data.submissions?.length || 0);
-    if (page === 1 && data.submissions?.length > 0) {
-      console.log('First submission keys:', Object.keys(data.submissions[0]));
-      console.log('First submission sample:', JSON.stringify(data.submissions[0]).substring(0, 800));
-    }
-    allSubmissions = allSubmissions.concat(data.submissions || []);
 
+    // 첫 페이지에서 질문 매핑 저장
+    if (page === 1 && data.questions) {
+      questionMap = {};
+      data.questions.forEach(q => {
+        questionMap[q.id] = q.title;
+      });
+      console.log('Question map:', questionMap);
+    }
+
+    allSubmissions = allSubmissions.concat(data.submissions || []);
     hasMore = data.hasMore || false;
     page++;
   }
 
+  console.log('Total submissions loaded:', allSubmissions.length);
   return allSubmissions;
 }
 
 // 제출 데이터에서 필드 값 추출
 function getFieldValue(submission, fieldName) {
-  const field = submission.fields.find(f => f.label === fieldName);
-  if (!field) return null;
+  if (!submission.responses) return null;
 
-  if (field.type === 'INPUT_DATE') {
-    return field.value; // YYYY-MM-DD 형식
-  }
-  if (field.type === 'INPUT_NUMBER') {
-    return parseInt(field.value) || 0;
-  }
-  return field.value;
+  // questionMap에서 해당 fieldName의 questionId 찾기
+  const questionId = Object.keys(questionMap).find(id => questionMap[id] === fieldName);
+  if (!questionId) return null;
+
+  const response = submission.responses.find(r => r.questionId === questionId);
+  if (!response) return null;
+
+  return response.answer;
 }
 
 // 사번 목록 조회 API
