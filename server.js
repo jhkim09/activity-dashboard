@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
@@ -8,6 +9,45 @@ const PORT = process.env.PORT || 3000;
 
 const TALLY_API_KEY = process.env.TALLY_API_KEY;
 const FORM_ID = 'ob9Bkx';
+
+// 칸반보드 비밀번호
+const KANBAN_PASSWORD = process.env.KANBAN_PASSWORD || 'rkdska1';
+
+// 칸반 데이터 저장소 (메모리 + 파일)
+const KANBAN_FILE = path.join(__dirname, 'kanban-data.json');
+let kanbanData = {
+  columns: [
+    { id: 'important', title: '🔴 중요 공지', cards: [] },
+    { id: 'general', title: '🟡 일반 공지', cards: [] },
+    { id: 'done', title: '✅ 완료', cards: [] }
+  ]
+};
+
+// 파일에서 칸반 데이터 로드
+function loadKanbanData() {
+  try {
+    if (fs.existsSync(KANBAN_FILE)) {
+      const data = fs.readFileSync(KANBAN_FILE, 'utf8');
+      kanbanData = JSON.parse(data);
+      console.log('Kanban data loaded from file');
+    }
+  } catch (error) {
+    console.error('Error loading kanban data:', error);
+  }
+}
+
+// 파일에 칸반 데이터 저장
+function saveKanbanData() {
+  try {
+    fs.writeFileSync(KANBAN_FILE, JSON.stringify(kanbanData, null, 2));
+    console.log('Kanban data saved to file');
+  } catch (error) {
+    console.error('Error saving kanban data:', error);
+  }
+}
+
+// 서버 시작시 데이터 로드
+loadKanbanData();
 
 app.use(cors());
 app.use(express.json());
@@ -168,6 +208,107 @@ app.get('/api/activity', async (req, res) => {
     console.error('Error fetching activity:', error);
     res.status(500).json({ error: 'Failed to fetch activity data' });
   }
+});
+
+// ============ 칸반보드 API ============
+
+// 칸반 데이터 조회 (누구나 가능)
+app.get('/api/kanban', (req, res) => {
+  res.json(kanbanData);
+});
+
+// 비밀번호 확인 미들웨어
+function checkPassword(req, res, next) {
+  const { password } = req.body;
+  if (password !== KANBAN_PASSWORD) {
+    return res.status(401).json({ error: '비밀번호가 올바르지 않습니다.' });
+  }
+  next();
+}
+
+// 카드 추가
+app.post('/api/kanban/card', checkPassword, (req, res) => {
+  const { columnId, title, content } = req.body;
+
+  const column = kanbanData.columns.find(c => c.id === columnId);
+  if (!column) {
+    return res.status(400).json({ error: '잘못된 컬럼입니다.' });
+  }
+
+  const newCard = {
+    id: Date.now().toString(),
+    title: title || '새 공지',
+    content: content || '',
+    createdAt: new Date().toISOString()
+  };
+
+  column.cards.push(newCard);
+  saveKanbanData();
+
+  res.json({ success: true, card: newCard });
+});
+
+// 카드 수정
+app.put('/api/kanban/card/:cardId', checkPassword, (req, res) => {
+  const { cardId } = req.params;
+  const { title, content } = req.body;
+
+  for (const column of kanbanData.columns) {
+    const card = column.cards.find(c => c.id === cardId);
+    if (card) {
+      if (title !== undefined) card.title = title;
+      if (content !== undefined) card.content = content;
+      card.updatedAt = new Date().toISOString();
+      saveKanbanData();
+      return res.json({ success: true, card });
+    }
+  }
+
+  res.status(404).json({ error: '카드를 찾을 수 없습니다.' });
+});
+
+// 카드 삭제
+app.delete('/api/kanban/card/:cardId', (req, res) => {
+  const { cardId } = req.params;
+  const { password } = req.body;
+
+  if (password !== KANBAN_PASSWORD) {
+    return res.status(401).json({ error: '비밀번호가 올바르지 않습니다.' });
+  }
+
+  for (const column of kanbanData.columns) {
+    const index = column.cards.findIndex(c => c.id === cardId);
+    if (index !== -1) {
+      column.cards.splice(index, 1);
+      saveKanbanData();
+      return res.json({ success: true });
+    }
+  }
+
+  res.status(404).json({ error: '카드를 찾을 수 없습니다.' });
+});
+
+// 카드 이동 (컬럼 간 이동)
+app.post('/api/kanban/move', checkPassword, (req, res) => {
+  const { cardId, fromColumnId, toColumnId, newIndex } = req.body;
+
+  const fromColumn = kanbanData.columns.find(c => c.id === fromColumnId);
+  const toColumn = kanbanData.columns.find(c => c.id === toColumnId);
+
+  if (!fromColumn || !toColumn) {
+    return res.status(400).json({ error: '잘못된 컬럼입니다.' });
+  }
+
+  const cardIndex = fromColumn.cards.findIndex(c => c.id === cardId);
+  if (cardIndex === -1) {
+    return res.status(404).json({ error: '카드를 찾을 수 없습니다.' });
+  }
+
+  const [card] = fromColumn.cards.splice(cardIndex, 1);
+  toColumn.cards.splice(newIndex !== undefined ? newIndex : toColumn.cards.length, 0, card);
+  saveKanbanData();
+
+  res.json({ success: true });
 });
 
 // 메인 페이지

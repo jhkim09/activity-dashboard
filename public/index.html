@@ -14,6 +14,27 @@
         .funnel-stage:hover {
             transform: translateY(-5px);
         }
+        /* 칸반보드 스타일 */
+        .kanban-column {
+            min-height: 200px;
+        }
+        .kanban-card {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .kanban-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .kanban-card.dragging {
+            opacity: 0.5;
+        }
+        .modal {
+            display: none;
+        }
+        .modal.active {
+            display: flex;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -101,6 +122,88 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
             </svg>
             <p class="mt-4 text-gray-600">조건에 맞는 데이터가 없습니다.</p>
+        </div>
+
+        <!-- 칸반보드 섹션 -->
+        <div class="mt-12">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">공지사항 보드</h2>
+                <button onclick="openAddModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    공지 추가
+                </button>
+            </div>
+
+            <div id="kanbanBoard" class="grid md:grid-cols-3 gap-4">
+                <!-- 칸반 컬럼들이 여기에 동적으로 생성됨 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 공지 추가/수정 모달 -->
+    <div id="cardModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+            <h3 id="modalTitle" class="text-xl font-bold mb-4">공지 추가</h3>
+            <form id="cardForm" onsubmit="submitCard(event)">
+                <input type="hidden" id="cardId">
+                <input type="hidden" id="cardColumnId">
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">컬럼 선택</label>
+                    <select id="columnSelect" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="important">🔴 중요 공지</option>
+                        <option value="general">🟡 일반 공지</option>
+                        <option value="done">✅ 완료</option>
+                    </select>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">제목</label>
+                    <input type="text" id="cardTitle" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="공지 제목">
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">내용</label>
+                    <textarea id="cardContent" rows="4" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="공지 내용"></textarea>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">비밀번호</label>
+                    <input type="password" id="cardPassword" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="비밀번호 입력">
+                </div>
+
+                <div class="flex gap-3">
+                    <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition">취소</button>
+                    <button type="submit" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">저장</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 공지 상세보기 모달 -->
+    <div id="viewModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+            <div class="flex justify-between items-start mb-4">
+                <h3 id="viewTitle" class="text-xl font-bold"></h3>
+                <button onclick="closeViewModal()" class="text-gray-500 hover:text-gray-700">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <p id="viewContent" class="text-gray-600 mb-4 whitespace-pre-wrap"></p>
+            <p id="viewDate" class="text-sm text-gray-400 mb-4"></p>
+
+            <div class="border-t pt-4">
+                <p class="text-sm text-gray-500 mb-2">수정/삭제하려면 비밀번호 입력:</p>
+                <input type="password" id="viewPassword" class="w-full px-4 py-2 border border-gray-300 rounded-lg mb-3" placeholder="비밀번호">
+                <div class="flex gap-3">
+                    <button onclick="editCard()" class="flex-1 px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition">수정</button>
+                    <button onclick="deleteCard()" class="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition">삭제</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -242,6 +345,210 @@
                 }
             });
         }
+
+        // ============ 칸반보드 기능 ============
+        let kanbanData = null;
+        let currentViewCard = null;
+
+        // 칸반 데이터 로드
+        async function loadKanban() {
+            try {
+                const response = await fetch('/api/kanban');
+                kanbanData = await response.json();
+                renderKanban();
+            } catch (error) {
+                console.error('Error loading kanban:', error);
+            }
+        }
+
+        // 칸반보드 렌더링
+        function renderKanban() {
+            const board = document.getElementById('kanbanBoard');
+            board.innerHTML = '';
+
+            const columnColors = {
+                important: 'border-red-300 bg-red-50',
+                general: 'border-yellow-300 bg-yellow-50',
+                done: 'border-green-300 bg-green-50'
+            };
+
+            kanbanData.columns.forEach(column => {
+                const colDiv = document.createElement('div');
+                colDiv.className = `kanban-column bg-white rounded-xl shadow-lg p-4 border-t-4 ${columnColors[column.id] || 'border-gray-300'}`;
+                colDiv.dataset.columnId = column.id;
+
+                colDiv.innerHTML = `
+                    <h3 class="font-bold text-gray-700 mb-4">${column.title}</h3>
+                    <div class="space-y-3" data-column="${column.id}">
+                        ${column.cards.map(card => `
+                            <div class="kanban-card bg-white border rounded-lg p-3 shadow-sm"
+                                 data-card-id="${card.id}"
+                                 onclick="viewCard('${card.id}')">
+                                <h4 class="font-medium text-gray-800">${escapeHtml(card.title)}</h4>
+                                ${card.content ? `<p class="text-sm text-gray-500 mt-1 line-clamp-2">${escapeHtml(card.content)}</p>` : ''}
+                                <p class="text-xs text-gray-400 mt-2">${formatDate(card.createdAt)}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+
+                board.appendChild(colDiv);
+            });
+        }
+
+        // HTML 이스케이프
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 날짜 포맷
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
+
+        // 모달 열기 (추가)
+        function openAddModal() {
+            document.getElementById('modalTitle').textContent = '공지 추가';
+            document.getElementById('cardId').value = '';
+            document.getElementById('cardColumnId').value = '';
+            document.getElementById('columnSelect').value = 'important';
+            document.getElementById('columnSelect').disabled = false;
+            document.getElementById('cardTitle').value = '';
+            document.getElementById('cardContent').value = '';
+            document.getElementById('cardPassword').value = '';
+            document.getElementById('cardModal').classList.add('active');
+        }
+
+        // 모달 닫기
+        function closeModal() {
+            document.getElementById('cardModal').classList.remove('active');
+        }
+
+        // 카드 제출
+        async function submitCard(event) {
+            event.preventDefault();
+
+            const cardId = document.getElementById('cardId').value;
+            const columnId = document.getElementById('columnSelect').value;
+            const title = document.getElementById('cardTitle').value;
+            const content = document.getElementById('cardContent').value;
+            const password = document.getElementById('cardPassword').value;
+
+            try {
+                let response;
+                if (cardId) {
+                    // 수정
+                    response = await fetch(`/api/kanban/card/${cardId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title, content, password })
+                    });
+                } else {
+                    // 추가
+                    response = await fetch('/api/kanban/card', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ columnId, title, content, password })
+                    });
+                }
+
+                const result = await response.json();
+                if (response.ok) {
+                    closeModal();
+                    loadKanban();
+                } else {
+                    alert(result.error || '오류가 발생했습니다.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('오류가 발생했습니다.');
+            }
+        }
+
+        // 카드 상세보기
+        function viewCard(cardId) {
+            for (const column of kanbanData.columns) {
+                const card = column.cards.find(c => c.id === cardId);
+                if (card) {
+                    currentViewCard = { ...card, columnId: column.id };
+                    document.getElementById('viewTitle').textContent = card.title;
+                    document.getElementById('viewContent').textContent = card.content || '(내용 없음)';
+                    document.getElementById('viewDate').textContent = '작성: ' + formatDate(card.createdAt);
+                    document.getElementById('viewPassword').value = '';
+                    document.getElementById('viewModal').classList.add('active');
+                    return;
+                }
+            }
+        }
+
+        // 상세보기 모달 닫기
+        function closeViewModal() {
+            document.getElementById('viewModal').classList.remove('active');
+            currentViewCard = null;
+        }
+
+        // 카드 수정
+        function editCard() {
+            if (!currentViewCard) return;
+
+            const password = document.getElementById('viewPassword').value;
+            if (!password) {
+                alert('비밀번호를 입력하세요.');
+                return;
+            }
+
+            closeViewModal();
+
+            document.getElementById('modalTitle').textContent = '공지 수정';
+            document.getElementById('cardId').value = currentViewCard.id;
+            document.getElementById('cardColumnId').value = currentViewCard.columnId;
+            document.getElementById('columnSelect').value = currentViewCard.columnId;
+            document.getElementById('columnSelect').disabled = true;
+            document.getElementById('cardTitle').value = currentViewCard.title;
+            document.getElementById('cardContent').value = currentViewCard.content || '';
+            document.getElementById('cardPassword').value = password;
+            document.getElementById('cardModal').classList.add('active');
+        }
+
+        // 카드 삭제
+        async function deleteCard() {
+            if (!currentViewCard) return;
+
+            const password = document.getElementById('viewPassword').value;
+            if (!password) {
+                alert('비밀번호를 입력하세요.');
+                return;
+            }
+
+            if (!confirm('정말 삭제하시겠습니까?')) return;
+
+            try {
+                const response = await fetch(`/api/kanban/card/${currentViewCard.id}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    closeViewModal();
+                    loadKanban();
+                } else {
+                    alert(result.error || '오류가 발생했습니다.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('오류가 발생했습니다.');
+            }
+        }
+
+        // 페이지 로드 시 칸반도 로드
+        document.addEventListener('DOMContentLoaded', () => {
+            loadKanban();
+        });
     </script>
 </body>
 </html>
