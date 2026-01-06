@@ -23,7 +23,7 @@ async function fetchAllSubmissions() {
   console.log('TALLY_API_KEY prefix:', TALLY_API_KEY ? TALLY_API_KEY.substring(0, 8) : 'none');
 
   while (hasMore) {
-    const url = `https://api.tally.so/forms/${FORM_ID}/submissions?page=${page}&limit=100`;
+    const url = `https://api.tally.so/forms/${FORM_ID}/submissions?page=${page}`;
     console.log('Fetching:', url);
 
     const response = await fetch(url, {
