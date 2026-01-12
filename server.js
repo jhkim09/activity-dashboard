@@ -246,10 +246,53 @@ app.get('/api/activity', async (req, res) => {
       }
     ];
 
+    // ============ 랭킹 계산 ============
+    // 사번별 OT, MCS 합계 계산
+    const memberStats = {};
+    submissions.forEach(sub => {
+      const memberId = getFieldValue(sub, '본인 사번');
+      if (!memberId) return;
+
+      if (!memberStats[memberId]) {
+        memberStats[memberId] = { OT: 0, MCS: 0 };
+      }
+      memberStats[memberId].OT += getFieldValue(sub, 'OT') || 0;
+      memberStats[memberId].MCS += getFieldValue(sub, 'MCS') || 0;
+    });
+
+    // 랭킹 추출 함수 (동률 처리)
+    function getRanking(stats, field) {
+      const entries = Object.entries(stats)
+        .map(([id, data]) => ({ memberId: parseInt(id), value: data[field] }))
+        .filter(e => e.value > 0)
+        .sort((a, b) => b.value - a.value);
+
+      if (entries.length === 0) return { first: [], second: [] };
+
+      const firstValue = entries[0].value;
+      const first = entries.filter(e => e.value === firstValue);
+
+      // 1등 다음으로 높은 값 찾기
+      const secondEntries = entries.filter(e => e.value < firstValue);
+      if (secondEntries.length === 0) return { first, second: [] };
+
+      const secondValue = secondEntries[0].value;
+      const second = secondEntries.filter(e => e.value === secondValue);
+
+      return { first, second };
+    }
+
+    const otRanking = getRanking(memberStats, 'OT');
+    const mcsRanking = getRanking(memberStats, 'MCS');
+
     res.json({
       totals,
       funnel,
-      recordCount: submissions.length
+      recordCount: submissions.length,
+      ranking: {
+        OT: otRanking,
+        MCS: mcsRanking
+      }
     });
   } catch (error) {
     console.error('Error fetching activity:', error);

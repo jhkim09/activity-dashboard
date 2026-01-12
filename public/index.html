@@ -127,6 +127,29 @@
                 </div>
             </div>
 
+            <!-- Ranking Section -->
+            <div id="rankingSection" class="grid md:grid-cols-2 gap-6 mb-8">
+                <!-- OT Ranking -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                        <span class="text-2xl">🏆</span> OT 랭킹
+                    </h3>
+                    <div id="otRanking" class="space-y-3">
+                        <!-- 랭킹이 여기에 동적으로 생성됨 -->
+                    </div>
+                </div>
+
+                <!-- MCS Ranking -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                        <span class="text-2xl">🏆</span> MCS 랭킹
+                    </h3>
+                    <div id="mcsRanking" class="space-y-3">
+                        <!-- 랭킹이 여기에 동적으로 생성됨 -->
+                    </div>
+                </div>
+            </div>
+
             <!-- Record Count -->
             <div class="text-center text-gray-500 text-sm">
                 <span id="recordCount">0</span>개 레코드 조회됨
@@ -280,6 +303,9 @@
                 // 차트 업데이트
                 updateChart(data.funnel);
 
+                // 랭킹 업데이트
+                updateRanking(data.ranking);
+
                 document.getElementById('dashboard').classList.remove('hidden');
             } catch (error) {
                 console.error('Error loading data:', error);
@@ -344,6 +370,63 @@
                     }
                 }
             });
+        }
+
+        // 랭킹 업데이트 함수
+        function updateRanking(ranking) {
+            const otContainer = document.getElementById('otRanking');
+            const mcsContainer = document.getElementById('mcsRanking');
+
+            otContainer.innerHTML = renderRankingHTML(ranking.OT);
+            mcsContainer.innerHTML = renderRankingHTML(ranking.MCS);
+        }
+
+        function renderRankingHTML(rankData) {
+            if (!rankData || rankData.first.length === 0) {
+                return '<p class="text-gray-400 text-center py-4">데이터 없음</p>';
+            }
+
+            let html = '';
+
+            // 1등 표시
+            const firstMembers = rankData.first.map(e => e.memberId).join(', ');
+            const firstValue = rankData.first[0].value;
+            const isTie1st = rankData.first.length > 1;
+
+            html += `
+                <div class="flex items-center justify-between p-3 bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg border border-yellow-200">
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">🥇</span>
+                        <div>
+                            <p class="font-bold text-gray-800">${firstMembers}${isTie1st ? ' <span class="text-xs text-yellow-600">(동률)</span>' : ''}</p>
+                            <p class="text-sm text-gray-500">1등</p>
+                        </div>
+                    </div>
+                    <span class="text-xl font-bold text-yellow-600">${firstValue}</span>
+                </div>
+            `;
+
+            // 2등 표시 (있는 경우에만)
+            if (rankData.second.length > 0) {
+                const secondMembers = rankData.second.map(e => e.memberId).join(', ');
+                const secondValue = rankData.second[0].value;
+                const isTie2nd = rankData.second.length > 1;
+
+                html += `
+                    <div class="flex items-center justify-between p-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg border border-gray-200">
+                        <div class="flex items-center gap-3">
+                            <span class="text-2xl">🥈</span>
+                            <div>
+                                <p class="font-bold text-gray-800">${secondMembers}${isTie2nd ? ' <span class="text-xs text-gray-500">(동률)</span>' : ''}</p>
+                                <p class="text-sm text-gray-500">2등</p>
+                            </div>
+                        </div>
+                        <span class="text-xl font-bold text-gray-600">${secondValue}</span>
+                    </div>
+                `;
+            }
+
+            return html;
         }
 
         // ============ 칸반보드 기능 ============
