@@ -56,6 +56,49 @@ app.use(express.static('public'));
 // 질문 ID를 라벨로 매핑
 let questionMap = {};
 
+// ============ 데이터 보정 설정 ============
+// Tally에서 수정이 안 되는 잘못된 데이터를 여기서 보정
+const DATA_CORRECTIONS = [
+  {
+    // 2025-12-06 21:01 경 제출된 데이터
+    match: {
+      submittedAt: '2025-12-06',  // 날짜 (YYYY-MM-DD)
+      wrongValue: 337693          // 잘못 입력된 사번
+    },
+    correct: {
+      field: '본인 사번',
+      value: 327693               // 올바른 사번
+    }
+  }
+  // 추가 보정이 필요하면 여기에 추가
+];
+
+// 데이터 보정 함수
+function applyDataCorrections(submissions) {
+  return submissions.map(sub => {
+    const submittedDate = sub.submittedAt ? sub.submittedAt.substring(0, 10) : null;
+
+    for (const correction of DATA_CORRECTIONS) {
+      // 날짜 매칭 확인
+      if (submittedDate !== correction.match.submittedAt) continue;
+
+      // 잘못된 값 찾기
+      const questionId = Object.keys(questionMap).find(id =>
+        questionMap[id] === correction.correct.field
+      );
+      if (!questionId) continue;
+
+      const response = sub.responses?.find(r => r.questionId === questionId);
+      if (response && response.answer === correction.match.wrongValue) {
+        console.log(`[데이터 보정] ${correction.match.submittedAt}: ${correction.match.wrongValue} → ${correction.correct.value}`);
+        response.answer = correction.correct.value;
+      }
+    }
+
+    return sub;
+  });
+}
+
 // Tally API에서 모든 제출 데이터 가져오기
 async function fetchAllSubmissions() {
   let allSubmissions = [];
@@ -95,6 +138,10 @@ async function fetchAllSubmissions() {
   }
 
   console.log('Total submissions loaded:', allSubmissions.length);
+
+  // 데이터 보정 적용
+  allSubmissions = applyDataCorrections(allSubmissions);
+
   return allSubmissions;
 }
 
