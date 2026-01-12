@@ -17,9 +17,7 @@ const KANBAN_PASSWORD = process.env.KANBAN_PASSWORD || 'rkdska1';
 const KANBAN_FILE = path.join(__dirname, 'kanban-data.json');
 let kanbanData = {
   columns: [
-    { id: 'important', title: '🔴 중요 공지', cards: [] },
-    { id: 'general', title: '🟡 일반 공지', cards: [] },
-    { id: 'done', title: '✅ 완료', cards: [] }
+    { id: 'general', title: '📢 공지사항', cards: [] }
   ]
 };
 
@@ -28,7 +26,21 @@ function loadKanbanData() {
   try {
     if (fs.existsSync(KANBAN_FILE)) {
       const data = fs.readFileSync(KANBAN_FILE, 'utf8');
-      kanbanData = JSON.parse(data);
+      const loadedData = JSON.parse(data);
+
+      // 마이그레이션: 기존 3개 컬럼 → 1개 컬럼으로 변환
+      if (loadedData.columns && loadedData.columns.length > 1) {
+        const generalColumn = loadedData.columns.find(c => c.id === 'general');
+        if (generalColumn) {
+          kanbanData = {
+            columns: [{ id: 'general', title: '📢 공지사항', cards: generalColumn.cards || [] }]
+          };
+        }
+        saveKanbanData(); // 마이그레이션 후 저장
+        console.log('Kanban data migrated to single column');
+      } else {
+        kanbanData = loadedData;
+      }
       console.log('Kanban data loaded from file');
     }
   } catch (error) {
