@@ -230,10 +230,11 @@
         document.addEventListener('DOMContentLoaded', async () => {
             await loadMembers();
 
-            // 기본 날짜 설정 (이번 달)
+            // 기본 날짜 설정 (종료일: 오늘, 시작일: 7일 전)
             const now = new Date();
-            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-            document.getElementById('startDate').value = firstDay.toISOString().split('T')[0];
+            const sevenDaysAgo = new Date(now);
+            sevenDaysAgo.setDate(now.getDate() - 7);
+            document.getElementById('startDate').value = sevenDaysAgo.toISOString().split('T')[0];
             document.getElementById('endDate').value = now.toISOString().split('T')[0];
 
             // 초기 데이터 로드
