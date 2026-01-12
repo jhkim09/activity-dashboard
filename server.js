@@ -328,13 +328,20 @@ function checkPassword(req, res, next) {
   next();
 }
 
-// 카드 추가
+// 카드 추가 (최대 3개 제한)
+const MAX_CARDS = 3;
+
 app.post('/api/kanban/card', checkPassword, (req, res) => {
   const { columnId, title, content } = req.body;
 
   const column = kanbanData.columns.find(c => c.id === columnId);
   if (!column) {
     return res.status(400).json({ error: '잘못된 컬럼입니다.' });
+  }
+
+  // 최대 카드 수 체크
+  if (column.cards.length >= MAX_CARDS) {
+    return res.status(400).json({ error: `공지는 최대 ${MAX_CARDS}개까지만 등록할 수 있습니다.` });
   }
 
   const newCard = {
