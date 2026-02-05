@@ -570,14 +570,17 @@
                 return;
             }
 
+            // closeViewModal() 전에 데이터 저장 (closeViewModal이 currentViewCard를 null로 만듦)
+            const cardData = { ...currentViewCard };
+
             closeViewModal();
 
             document.getElementById('modalTitle').textContent = '공지 수정';
-            document.getElementById('cardId').value = currentViewCard.id;
-            document.getElementById('cardColumnId').value = currentViewCard.columnId;
+            document.getElementById('cardId').value = cardData.id;
+            document.getElementById('cardColumnId').value = cardData.columnId;
             document.getElementById('columnSelect').value = 'general';
-            document.getElementById('cardTitle').value = currentViewCard.title;
-            document.getElementById('cardContent').value = currentViewCard.content || '';
+            document.getElementById('cardTitle').value = cardData.title;
+            document.getElementById('cardContent').value = cardData.content || '';
             document.getElementById('cardPassword').value = password;
             document.getElementById('cardModal').classList.add('active');
         }
