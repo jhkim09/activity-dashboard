@@ -4,6 +4,10 @@ services:
     runtime: node
     buildCommand: npm install
     startCommand: npm start
+    disk:
+      name: kanban-data
+      mountPath: /data
+      sizeGB: 1
     envVars:
       - key: TALLY_API_KEY
         sync: false

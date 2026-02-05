@@ -14,7 +14,10 @@ const FORM_ID = 'ob9Bkx';
 const KANBAN_PASSWORD = process.env.KANBAN_PASSWORD || 'rkdska1';
 
 // 칸반 데이터 저장소 (메모리 + 파일)
-const KANBAN_FILE = path.join(__dirname, 'kanban-data.json');
+// Render Disk 사용 시 /data, 로컬 개발 시 현재 폴더
+const KANBAN_FILE = process.env.NODE_ENV === 'production'
+  ? '/data/kanban-data.json'
+  : path.join(__dirname, 'kanban-data.json');
 let kanbanData = {
   columns: [
     { id: 'general', title: '📢 공지사항', cards: [] }
