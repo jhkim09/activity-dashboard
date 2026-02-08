@@ -77,15 +77,30 @@ const DATA_CORRECTIONS = [
   {
     // 2025-12-06 21:01 경 제출된 데이터
     match: {
-      submittedAt: '2025-12-06',  // 날짜 (YYYY-MM-DD)
+      submittedAt: '2025-12-06',  // 날짜 (YYYY-MM-DD), 생략하면 전체 적용
       wrongValue: 337693          // 잘못 입력된 사번
     },
     correct: {
       field: '본인 사번',
       value: 327693               // 올바른 사번
     }
+  },
+  {
+    // 429592는 429595의 오타 (같은 사람)
+    match: {
+      wrongValue: 429592
+    },
+    correct: {
+      field: '본인 사번',
+      value: 429595
+    }
   }
   // 추가 보정이 필요하면 여기에 추가
+];
+
+// 제외할 사번 목록 (정체불명 등)
+const EXCLUDED_MEMBERS = [
+  8206880   // 정체불명 사번
 ];
 
 // 데이터 보정 함수
@@ -94,8 +109,8 @@ function applyDataCorrections(submissions) {
     const submittedDate = sub.submittedAt ? sub.submittedAt.substring(0, 10) : null;
 
     for (const correction of DATA_CORRECTIONS) {
-      // 날짜 매칭 확인
-      if (submittedDate !== correction.match.submittedAt) continue;
+      // 날짜 매칭 확인 (날짜가 지정된 경우에만)
+      if (correction.match.submittedAt && submittedDate !== correction.match.submittedAt) continue;
 
       // 잘못된 값 찾기
       const questionId = Object.keys(questionMap).find(id =>
@@ -105,7 +120,7 @@ function applyDataCorrections(submissions) {
 
       const response = sub.responses?.find(r => r.questionId === questionId);
       if (response && response.answer === correction.match.wrongValue) {
-        console.log(`[데이터 보정] ${correction.match.submittedAt}: ${correction.match.wrongValue} → ${correction.correct.value}`);
+        console.log(`[데이터 보정] ${submittedDate}: ${correction.match.wrongValue} → ${correction.correct.value}`);
         response.answer = correction.correct.value;
       }
     }
@@ -156,6 +171,17 @@ async function fetchAllSubmissions() {
 
   // 데이터 보정 적용
   allSubmissions = applyDataCorrections(allSubmissions);
+
+  // 제외 사번 필터링
+  if (EXCLUDED_MEMBERS.length > 0) {
+    const before = allSubmissions.length;
+    allSubmissions = allSubmissions.filter(sub => {
+      const memberId = getFieldValue(sub, '본인 사번');
+      return !EXCLUDED_MEMBERS.includes(memberId);
+    });
+    const removed = before - allSubmissions.length;
+    if (removed > 0) console.log(`[제외 사번] ${removed}건 제외됨`);
+  }
 
   return allSubmissions;
 }
