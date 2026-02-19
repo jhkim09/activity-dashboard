@@ -94,8 +94,17 @@ const DATA_CORRECTIONS = [
       field: '본인 사번',
       value: 429595
     }
+  },
+  {
+    // 54730은 84730의 오타
+    match: {
+      wrongValue: 54730
+    },
+    correct: {
+      field: '본인 사번',
+      value: 84730
+    }
   }
-  // 추가 보정이 필요하면 여기에 추가
 ];
 
 // 제외할 사번 목록 (정체불명 등)
