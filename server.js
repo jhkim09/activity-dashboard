@@ -9,6 +9,7 @@ const PORT = process.env.PORT || 3000;
 
 const TALLY_API_KEY = process.env.TALLY_API_KEY;
 const FORM_ID = 'ob9Bkx';
+const MAKE_ALERT_WEBHOOK_URL = process.env.MAKE_ALERT_WEBHOOK_URL;
 
 // 칸반보드 비밀번호
 const KANBAN_PASSWORD = process.env.KANBAN_PASSWORD || 'rkdska1';
@@ -86,19 +87,29 @@ const DATA_CORRECTIONS = [
     }
   },
   {
-    // 429592는 429595의 오타 (같은 사람)
+    // 429592는 459595의 오타 (같은 사람)
     match: {
       wrongValue: 429592
     },
     correct: {
       field: '본인 사번',
-      value: 429595
+      value: 459595
     }
   },
   {
-    // 54730은 84730의 오타
+    // 459592는 459595의 오타 (같은 사람)
     match: {
-      wrongValue: 54730
+      wrongValue: 459592
+    },
+    correct: {
+      field: '본인 사번',
+      value: 459595
+    }
+  },
+  {
+    // 81730은 84730의 오타
+    match: {
+      wrongValue: 81730
     },
     correct: {
       field: '본인 사번',
@@ -111,6 +122,67 @@ const DATA_CORRECTIONS = [
 const EXCLUDED_MEMBERS = [
   8206880   // 정체불명 사번
 ];
+
+// ============ 유효 사번 목록 ============
+// 알려진 정상 사번 목록 - 여기 없는 사번이 제출되면 make.com으로 알람 발송
+const VALID_MEMBERS = [
+  32219, 42591, 64089, 84730, 206880, 251515, 295284,
+  322915, 327693, 342394, 377773, 391035, 459595
+];
+
+// 미등록 사번 알람 중복 방지용 파일
+const UNKNOWN_ALERT_FILE = process.env.NODE_ENV === 'production'
+  ? '/data/unknown-alerts.json'
+  : path.join(__dirname, 'unknown-alerts.json');
+
+// 이미 알람 보낸 사번 목록 (메모리)
+let alertedUnknownIds = new Set();
+
+function loadAlertedIds() {
+  try {
+    if (fs.existsSync(UNKNOWN_ALERT_FILE)) {
+      const ids = JSON.parse(fs.readFileSync(UNKNOWN_ALERT_FILE, 'utf8'));
+      alertedUnknownIds = new Set(ids);
+      console.log(`[사번 알람] 기존 알람 이력 ${alertedUnknownIds.size}건 로드`);
+    }
+  } catch (e) {
+    console.error('[사번 알람] 이력 파일 로드 실패:', e.message);
+  }
+}
+
+function saveAlertedIds() {
+  try {
+    fs.writeFileSync(UNKNOWN_ALERT_FILE, JSON.stringify([...alertedUnknownIds], null, 2));
+  } catch (e) {
+    console.error('[사번 알람] 이력 파일 저장 실패:', e.message);
+  }
+}
+
+async function sendUnknownMemberAlert(memberId, submittedAt) {
+  if (!MAKE_ALERT_WEBHOOK_URL) return;
+  if (alertedUnknownIds.has(memberId)) return;
+
+  try {
+    await fetch(MAKE_ALERT_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'unknown_member',
+        memberId,
+        submittedAt,
+        message: `⚠️ 미등록 사번 감지: ${memberId} (제출일: ${submittedAt})`
+      })
+    });
+
+    alertedUnknownIds.add(memberId);
+    saveAlertedIds();
+    console.log(`[사번 알람] 미등록 사번 ${memberId} 알람 발송 완료`);
+  } catch (e) {
+    console.error(`[사번 알람] 웹훅 전송 실패 (${memberId}):`, e.message);
+  }
+}
+
+loadAlertedIds();
 
 // 데이터 보정 함수
 function applyDataCorrections(submissions) {
@@ -190,6 +262,19 @@ async function fetchAllSubmissions() {
     });
     const removed = before - allSubmissions.length;
     if (removed > 0) console.log(`[제외 사번] ${removed}건 제외됨`);
+  }
+
+  // 미등록 사번 감지 및 알람 (VALID_MEMBERS 목록이 설정된 경우에만)
+  if (VALID_MEMBERS.length > 0) {
+    for (const sub of allSubmissions) {
+      const memberId = getFieldValue(sub, '본인 사번');
+      if (!memberId || memberId <= 0) continue;
+      if (!VALID_MEMBERS.includes(memberId) && !EXCLUDED_MEMBERS.includes(memberId)) {
+        const submittedAt = sub.submittedAt ? sub.submittedAt.substring(0, 10) : '날짜불명';
+        console.log(`[사번 알람] 미등록 사번 발견: ${memberId} (${submittedAt})`);
+        sendUnknownMemberAlert(memberId, submittedAt); // async, 결과를 기다리지 않음
+      }
+    }
   }
 
   return allSubmissions;
