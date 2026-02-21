@@ -169,8 +169,7 @@ async function sendUnknownMemberAlert(memberId, submittedAt) {
       body: JSON.stringify({
         type: 'unknown_member',
         memberId,
-        submittedAt,
-        message: `⚠️ 미등록 사번 감지: ${memberId} (제출일: ${submittedAt})`
+        submittedAt
       })
     });
 
