@@ -336,8 +336,34 @@ function getFieldValue(submission, fieldName) {
 app.post('/api/check-new-submission', async (req, res) => {
   try {
     console.log('[트리거] Tally 제출 감지 → 사번 확인 시작');
-    await fetchAllSubmissions();
-    res.json({ success: true, message: '사번 확인 완료' });
+    const allSubmissions = await fetchAllSubmissions();
+
+    // 가장 최근 제출 찾기 (submittedAt 기준)
+    const sorted = [...allSubmissions].sort((a, b) =>
+      new Date(b.submittedAt) - new Date(a.submittedAt)
+    );
+    const latest = sorted[0];
+
+    if (!latest) {
+      return res.json({ success: true, status: '없음', message: '제출 데이터 없음' });
+    }
+
+    const memberId = getFieldValue(latest, '본인 사번');
+    const submittedAt = latest.submittedAt ? latest.submittedAt.substring(0, 10) : '날짜불명';
+
+    let status = '알수없음';
+    if (!memberId || memberId <= 0) {
+      status = '무효';
+    } else if (VALID_MEMBERS.includes(memberId)) {
+      status = '등록';
+    } else if (EXCLUDED_MEMBERS.includes(memberId)) {
+      status = '제외';
+    } else {
+      status = '미등록';
+    }
+
+    console.log(`[트리거] 최근 제출: 사번 ${memberId}, 상태: ${status}`);
+    res.json({ success: true, memberId, status, submittedAt });
   } catch (error) {
     console.error('[트리거] 확인 실패:', error);
     res.status(500).json({ error: 'Failed to check submissions' });
