@@ -332,6 +332,18 @@ function getFieldValue(submission, fieldName) {
   return response.answer;
 }
 
+// Tally 제출 시 웹훅 트리거용 엔드포인트 (Make.com에서 호출)
+app.post('/api/check-new-submission', async (req, res) => {
+  try {
+    console.log('[트리거] Tally 제출 감지 → 사번 확인 시작');
+    await fetchAllSubmissions();
+    res.json({ success: true, message: '사번 확인 완료' });
+  } catch (error) {
+    console.error('[트리거] 확인 실패:', error);
+    res.status(500).json({ error: 'Failed to check submissions' });
+  }
+});
+
 // 사번 목록 조회 API
 app.get('/api/members', async (req, res) => {
   try {
