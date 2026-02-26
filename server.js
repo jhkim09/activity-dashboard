@@ -183,6 +183,7 @@ async function sendUnknownMemberAlert(memberId, submittedAt) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'unknown_member',
+        status: '미등록',
         memberId,
         submittedAt
       })
@@ -193,6 +194,27 @@ async function sendUnknownMemberAlert(memberId, submittedAt) {
     console.log(`[사번 알람] 미등록 사번 ${memberId} 알람 발송 완료`);
   } catch (e) {
     console.error(`[사번 알람] 웹훅 전송 실패 (${memberId}):`, e.message);
+  }
+}
+
+// 등록 사번 입력 알람
+async function sendMemberSubmitAlert(memberId, submittedAt) {
+  if (!MAKE_ALERT_WEBHOOK_URL) return;
+
+  try {
+    await fetch(MAKE_ALERT_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'member_submit',
+        status: '등록',
+        memberId,
+        submittedAt
+      })
+    });
+    console.log(`[사번 알람] 등록 사번 ${memberId} 입력 알람 발송`);
+  } catch (e) {
+    console.error(`[사번 알람] 등록 사번 웹훅 전송 실패 (${memberId}):`, e.message);
   }
 }
 
@@ -278,15 +300,17 @@ async function fetchAllSubmissions() {
     if (removed > 0) console.log(`[제외 사번] ${removed}건 제외됨`);
   }
 
-  // 미등록 사번 감지 및 알람 (VALID_MEMBERS 목록이 설정된 경우에만)
+  // 사번 감지 및 알람 (VALID_MEMBERS 목록이 설정된 경우에만)
   if (VALID_MEMBERS.length > 0) {
     for (const sub of allSubmissions) {
       const memberId = getFieldValue(sub, '본인 사번');
       if (!memberId || memberId <= 0) continue;
-      if (!VALID_MEMBERS.includes(memberId) && !EXCLUDED_MEMBERS.includes(memberId)) {
-        const submittedAt = sub.submittedAt ? sub.submittedAt.substring(0, 10) : '날짜불명';
+      const submittedAt = sub.submittedAt ? sub.submittedAt.substring(0, 10) : '날짜불명';
+      if (VALID_MEMBERS.includes(memberId)) {
+        sendMemberSubmitAlert(memberId, submittedAt);
+      } else if (!EXCLUDED_MEMBERS.includes(memberId)) {
         console.log(`[사번 알람] 미등록 사번 발견: ${memberId} (${submittedAt})`);
-        sendUnknownMemberAlert(memberId, submittedAt); // async, 결과를 기다리지 않음
+        sendUnknownMemberAlert(memberId, submittedAt);
       }
     }
   }
