@@ -67,6 +67,7 @@ loadKanbanData();
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
 // 질문 ID를 라벨로 매핑
@@ -125,12 +126,31 @@ const DATA_CORRECTIONS = [
       field: '본인 사번',
       value: 84730
     }
+  },
+  {
+    // 8206880은 206880의 오타
+    match: {
+      wrongValue: 8206880
+    },
+    correct: {
+      field: '본인 사번',
+      value: 206880
+    }
+  },
+  {
+    // 42589는 42591의 오타
+    match: {
+      wrongValue: 42589
+    },
+    correct: {
+      field: '본인 사번',
+      value: 42591
+    }
   }
 ];
 
 // 제외할 사번 목록 (정체불명 등)
 const EXCLUDED_MEMBERS = [
-  8206880,  // 정체불명 사번
   337693,   // 327693 오타
   429592,   // 459595 오타
   459592,   // 459595 오타
@@ -139,14 +159,15 @@ const EXCLUDED_MEMBERS = [
   88,       // 테스트 입력
   2,        // 테스트 입력
   112,      // 테스트 입력
-  1234      // 테스트 입력
+  1234,     // 테스트 입력
+  42589     // 42591 오타
 ];
 
 // ============ 유효 사번 목록 ============
 // 알려진 정상 사번 목록 - 여기 없는 사번이 제출되면 make.com으로 알람 발송
 const VALID_MEMBERS = [
   32219, 42591, 64089, 84730, 206880, 251515, 295284,
-  322915, 327693, 342394, 377773, 391035, 459595
+  322915, 327693, 342394, 377773, 391035, 412798, 459595
 ];
 
 // 미등록 사번 알람 중복 방지용 파일
@@ -297,7 +318,7 @@ async function fetchAllSubmissions() {
   if (EXCLUDED_MEMBERS.length > 0) {
     const before = allSubmissions.length;
     allSubmissions = allSubmissions.filter(sub => {
-      const memberId = getFieldValue(sub, '본인 사번');
+      const memberId = Number(getFieldValue(sub, '본인 사번'));
       return !EXCLUDED_MEMBERS.includes(memberId);
     });
     const removed = before - allSubmissions.length;
@@ -307,7 +328,7 @@ async function fetchAllSubmissions() {
   // 사번 감지 및 알람 (VALID_MEMBERS 목록이 설정된 경우에만)
   if (VALID_MEMBERS.length > 0) {
     for (const sub of allSubmissions) {
-      const memberId = getFieldValue(sub, '본인 사번');
+      const memberId = Number(getFieldValue(sub, '본인 사번'));
       if (!memberId || memberId <= 0) continue;
       const submittedAt = sub.submittedAt ? sub.submittedAt.substring(0, 10) : '날짜불명';
       if (VALID_MEMBERS.includes(memberId)) {
@@ -340,10 +361,11 @@ function getFieldValue(submission, fieldName) {
 // Make.com에서 Tally 제출 데이터의 사번을 body.memberId로 전달
 app.post('/api/check-new-submission', async (req, res) => {
   try {
+    console.log(`[트리거] raw body:`, JSON.stringify(req.body));
     const memberId = Number(req.body.memberId);
     const submittedAt = req.body.submittedAt || new Date().toISOString().substring(0, 10);
 
-    console.log(`[트리거] Tally 제출 감지 → 사번: ${memberId}`);
+    console.log(`[트리거] Tally 제출 감지 → 사번: ${memberId}, type: ${typeof req.body.memberId}`);
 
     if (!memberId || memberId <= 0) {
       return res.json({ success: true, memberId, status: '무효', submittedAt });
@@ -395,7 +417,7 @@ app.get('/api/activity', async (req, res) => {
     // 필터 적용
     if (memberId) {
       submissions = submissions.filter(sub =>
-        getFieldValue(sub, '본인 사번') === parseInt(memberId)
+        Number(getFieldValue(sub, '본인 사번')) === parseInt(memberId)
       );
     }
 
