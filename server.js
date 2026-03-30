@@ -402,8 +402,8 @@ app.get('/api/members', async (req, res) => {
 
     res.json({ members });
   } catch (error) {
-    console.error('Error fetching members:', error);
-    res.status(500).json({ error: 'Failed to fetch members' });
+    console.error('Error fetching members:', error.message, error.stack);
+    res.status(500).json({ error: 'Failed to fetch members', message: error.message });
   }
 });
 
@@ -524,8 +524,8 @@ app.get('/api/activity', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching activity:', error);
-    res.status(500).json({ error: 'Failed to fetch activity data' });
+    console.error('Error fetching activity:', error.message, error.stack);
+    res.status(500).json({ error: 'Failed to fetch activity data', message: error.message });
   }
 });
 

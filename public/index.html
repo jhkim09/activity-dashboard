@@ -246,6 +246,11 @@
                 const response = await fetch('/api/members');
                 const data = await response.json();
 
+                if (!response.ok) {
+                    console.error('Members API error:', data.error || response.status);
+                    return;
+                }
+
                 const select = document.getElementById('memberSelect');
                 data.members.forEach(member => {
                     const option = document.createElement('option');
@@ -277,6 +282,10 @@
                 const response = await fetch(`/api/activity?${params}`);
                 const data = await response.json();
 
+                if (!response.ok) {
+                    throw new Error(data.error || data.message || `서버 오류 (${response.status})`);
+                }
+
                 document.getElementById('loading').classList.add('hidden');
 
                 if (data.recordCount === 0) {
@@ -304,7 +313,7 @@
             } catch (error) {
                 console.error('Error loading data:', error);
                 document.getElementById('loading').classList.add('hidden');
-                alert('데이터 로딩 중 오류가 발생했습니다.');
+                alert('데이터 로딩 중 오류가 발생했습니다.\n' + error.message);
             }
         }
 
