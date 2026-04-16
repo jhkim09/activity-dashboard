@@ -68,7 +68,7 @@ loadKanbanData();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // 질문 ID를 라벨로 매핑
 let questionMap = {};
@@ -146,6 +146,16 @@ const DATA_CORRECTIONS = [
       field: '본인 사번',
       value: 42591
     }
+  },
+  {
+    // 32219는 322915의 오타
+    match: {
+      wrongValue: 32219
+    },
+    correct: {
+      field: '본인 사번',
+      value: 322915
+    }
   }
 ];
 
@@ -160,15 +170,48 @@ const EXCLUDED_MEMBERS = [
   2,        // 테스트 입력
   112,      // 테스트 입력
   1234,     // 테스트 입력
-  42589     // 42591 오타
+  42589,    // 42591 오타
+  32219     // 322915 오타
 ];
 
-// ============ 유효 사번 목록 ============
-// 알려진 정상 사번 목록 - 여기 없는 사번이 제출되면 make.com으로 알람 발송
-const VALID_MEMBERS = [
-  32219, 42591, 64089, 84730, 206880, 251515, 295284,
-  322915, 327693, 342394, 377773, 391035, 412798, 459595
-];
+// ============ 유효 사번 + 이름 목록 ============
+// 사번 → 이름 매핑. 여기 없는 사번이 제출되면 make.com으로 알람 발송
+const MEMBER_NAMES = {
+  42591:  '심종태',
+  64089:  '김지훈',
+  84730:  '김희경',
+  206880: '지영미',
+  209475: '강우현',
+  251515: '전승범',
+  295284: '조헌우',
+  322915: '정성민',
+  327693: '윤연주',
+  342394: '김평안',
+  377773: '강대훈',
+  391035: '박성은',
+  412798: '이은희',
+  459595: '박상은'
+};
+const VALID_MEMBERS = Object.keys(MEMBER_NAMES).map(Number);
+
+// ============ 지점별 그룹 ============
+const BRANCHES = {
+  nice:     { name: '나이스지점',   members: [42591] },
+  alpha:    { name: '알파평택지점', members: [64089, 84730, 206880, 295284, 327693, 412798, 459595] },
+  infinity: { name: '인피니티지점', members: [209475, 251515, 322915, 342394, 377773, 391035] }
+};
+
+// 사번 → 지점 키 역매핑
+const MEMBER_BRANCH = {};
+for (const [key, branch] of Object.entries(BRANCHES)) {
+  for (const id of branch.members) {
+    MEMBER_BRANCH[id] = key;
+  }
+}
+
+function getMemberName(memberId) {
+  return MEMBER_NAMES[memberId] || String(memberId);
+}
 
 // 미등록 사번 알람 중복 방지용 파일
 const UNKNOWN_ALERT_FILE = process.env.NODE_ENV === 'production'
@@ -210,6 +253,7 @@ async function sendUnknownMemberAlert(memberId, submittedAt) {
         type: 'unknown_member',
         status: '미등록',
         memberId,
+        memberName: getMemberName(memberId),
         submittedAt
       })
     });
@@ -234,6 +278,7 @@ async function sendMemberSubmitAlert(memberId, submittedAt) {
         type: 'member_submit',
         status: '등록',
         memberId,
+        memberName: getMemberName(memberId),
         submittedAt
       })
     });
@@ -380,8 +425,9 @@ app.post('/api/check-new-submission', async (req, res) => {
       status = '미등록';
     }
 
-    console.log(`[트리거] 사번 ${memberId}, 상태: ${status}`);
-    res.json({ success: true, memberId, status, submittedAt });
+    const memberName = getMemberName(memberId);
+    console.log(`[트리거] 사번 ${memberId} (${memberName}), 상태: ${status}`);
+    res.json({ success: true, memberId, memberName, status, submittedAt });
   } catch (error) {
     console.error('[트리거] 확인 실패:', error);
     res.status(500).json({ error: 'Failed to check submissions' });
@@ -394,45 +440,78 @@ app.get('/api/members', async (req, res) => {
     const submissions = await fetchAllSubmissions();
 
     // 중복 제거된 사번 목록
-    const members = [...new Set(
+    const ids = [...new Set(
       submissions
         .map(sub => getFieldValue(sub, '본인 사번'))
         .filter(num => num !== null && num !== undefined && num > 0)
     )].sort((a, b) => a - b);
 
-    res.json({ members });
+    // 사번 + 이름 + 지점 함께 반환
+    const members = ids.map(id => ({
+      id,
+      name: getMemberName(id),
+      branch: MEMBER_BRANCH[id] || null
+    }));
+
+    // 지점 목록도 반환
+    const branches = Object.entries(BRANCHES).map(([key, b]) => ({
+      key,
+      name: b.name,
+      memberCount: b.members.length
+    }));
+
+    res.json({ members, branches });
   } catch (error) {
-    console.error('Error fetching members:', error.message, error.stack);
-    res.status(500).json({ error: 'Failed to fetch members', message: error.message });
+    console.error('Error fetching members:', error);
+    res.status(500).json({ error: 'Failed to fetch members' });
   }
 });
 
 // Activity 데이터 조회 API
 app.get('/api/activity', async (req, res) => {
   try {
-    const { memberId, startDate, endDate } = req.query;
+    const { memberId, startDate, endDate, branch } = req.query;
 
-    let submissions = await fetchAllSubmissions();
+    const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+    const memberIdNum = parseInt(memberId);
 
-    // 필터 적용
-    if (memberId) {
-      submissions = submissions.filter(sub =>
-        Number(getFieldValue(sub, '본인 사번')) === parseInt(memberId)
-      );
-    }
+    let allSubmissions = await fetchAllSubmissions();
 
-    if (startDate) {
-      submissions = submissions.filter(sub => {
+    // 날짜 필터: branchStats 계산에도 동일하게 적용하기 위해 먼저 분리
+    let dateFiltered = allSubmissions;
+    if (startDate && DATE_RE.test(startDate)) {
+      dateFiltered = dateFiltered.filter(sub => {
         const date = getFieldValue(sub, '날짜');
         return date && date >= startDate;
       });
     }
-
-    if (endDate) {
-      submissions = submissions.filter(sub => {
+    if (endDate && DATE_RE.test(endDate)) {
+      dateFiltered = dateFiltered.filter(sub => {
         const date = getFieldValue(sub, '날짜');
         return date && date <= endDate;
       });
+    }
+
+    // branchStats는 날짜 필터만 적용된 전체 데이터 기반 계산 (branch/memberId 필터 미적용)
+    // 지점 탭 선택 시에도 지점 비교 카드가 정상 표시되도록 하기 위함
+    const branchBaseSubmissions = dateFiltered;
+
+    let submissions = dateFiltered;
+
+    // 지점 필터 적용 (퍼널/랭킹에만 반영)
+    if (branch && BRANCHES[branch]) {
+      const branchMembers = BRANCHES[branch].members;
+      submissions = submissions.filter(sub => {
+        const id = Number(getFieldValue(sub, '본인 사번'));
+        return branchMembers.includes(id);
+      });
+    }
+
+    // 사번 필터 적용 (퍼널/랭킹에만 반영)
+    if (memberId && !isNaN(memberIdNum) && memberIdNum > 0) {
+      submissions = submissions.filter(sub =>
+        Number(getFieldValue(sub, '본인 사번')) === memberIdNum
+      );
     }
 
     // 데이터 집계
@@ -479,14 +558,14 @@ app.get('/api/activity', async (req, res) => {
     // 사번별 OT, MCS 합계 계산
     const memberStats = {};
     submissions.forEach(sub => {
-      const memberId = getFieldValue(sub, '본인 사번');
-      if (!memberId) return;
+      const subMemberId = getFieldValue(sub, '본인 사번');
+      if (!subMemberId) return;
 
-      if (!memberStats[memberId]) {
-        memberStats[memberId] = { OT: 0, MCS: 0 };
+      if (!memberStats[subMemberId]) {
+        memberStats[subMemberId] = { OT: 0, MCS: 0 };
       }
-      memberStats[memberId].OT += getFieldValue(sub, 'OT') || 0;
-      memberStats[memberId].MCS += getFieldValue(sub, 'MCS') || 0;
+      memberStats[subMemberId].OT += getFieldValue(sub, 'OT') || 0;
+      memberStats[subMemberId].MCS += getFieldValue(sub, 'MCS') || 0;
     });
 
     // 랭킹 추출 함수 (동률 처리)
@@ -514,6 +593,40 @@ app.get('/api/activity', async (req, res) => {
     const otRanking = getRanking(memberStats, 'OT');
     const mcsRanking = getRanking(memberStats, 'MCS');
 
+    // ============ 지점별 통계 ============
+    // branchBaseSubmissions: 날짜 필터만 적용된 전체 데이터
+    // branch/memberId 필터와 무관하게 지점 비교 카드를 항상 정상 표시하기 위함
+    // O(submissions) 단일 순회로 모든 지점 집계 (이전: O(branches * submissions))
+    const branchStats = {};
+    for (const [key, branchInfo] of Object.entries(BRANCHES)) {
+      branchStats[key] = {
+        name: branchInfo.name,
+        memberCount: branchInfo.members.length,
+        totals: { TA: 0, OT: 0, MCS: 0, 소개: 0, count: 0 },
+        funnel: []
+      };
+    }
+    for (const sub of branchBaseSubmissions) {
+      const id = Number(getFieldValue(sub, '본인 사번'));
+      const branchKey = MEMBER_BRANCH[id];
+      if (!branchKey || !branchStats[branchKey]) continue;
+      const bt = branchStats[branchKey].totals;
+      bt.TA    += getFieldValue(sub, 'TA') || 0;
+      bt.OT    += getFieldValue(sub, 'OT') || 0;
+      bt.MCS   += getFieldValue(sub, 'MCS') || 0;
+      bt.소개  += getFieldValue(sub, '소개 (사람수)') || 0;
+      bt.count += 1;
+    }
+    for (const key of Object.keys(branchStats)) {
+      const bt = branchStats[key].totals;
+      branchStats[key].funnel = [
+        { stage: 'TA',   value: bt.TA,   rate: 100 },
+        { stage: 'OT',   value: bt.OT,   rate: bt.TA > 0 ? ((bt.OT  / bt.TA) * 100).toFixed(1) : 0 },
+        { stage: 'MCS',  value: bt.MCS,  rate: bt.TA > 0 ? ((bt.MCS / bt.TA) * 100).toFixed(1) : 0 },
+        { stage: '소개', value: bt.소개, rate: bt.TA > 0 ? ((bt.소개 / bt.TA) * 100).toFixed(1) : 0 }
+      ];
+    }
+
     res.json({
       totals,
       funnel,
@@ -521,11 +634,12 @@ app.get('/api/activity', async (req, res) => {
       ranking: {
         OT: otRanking,
         MCS: mcsRanking
-      }
+      },
+      branchStats
     });
   } catch (error) {
-    console.error('Error fetching activity:', error.message, error.stack);
-    res.status(500).json({ error: 'Failed to fetch activity data', message: error.message });
+    console.error('Error fetching activity:', error);
+    res.status(500).json({ error: 'Failed to fetch activity data' });
   }
 });
 

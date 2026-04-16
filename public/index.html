@@ -35,6 +35,22 @@
         .modal.active {
             display: flex;
         }
+        /* 지점 탭 스타일 */
+        .branch-tab {
+            background: #E5E7EB;
+            color: #374151;
+        }
+        .branch-tab:hover {
+            background: #D1D5DB;
+        }
+        .branch-tab.active {
+            background: #2563EB;
+            color: white;
+        }
+        .branch-tab:focus-visible {
+            outline: 2px solid #2563EB;
+            outline-offset: 2px;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -42,7 +58,7 @@
         <!-- Header -->
         <header class="mb-8">
             <h1 class="text-3xl font-bold text-gray-800">Activity Data Dashboard</h1>
-            <p class="text-gray-600 mt-2">TA → OT → MCS → 소개 퍼널 분석</p>
+            <p class="text-gray-700 mt-2">TA → OT → MCS → 소개 퍼널 분석</p>
         </header>
 
         <!-- 칸반보드 섹션 -->
@@ -50,7 +66,7 @@
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-bold text-gray-800">공지사항 보드</h2>
                 <button onclick="openAddModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center gap-2">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                     </svg>
                     공지 추가
@@ -59,6 +75,13 @@
 
             <div id="kanbanBoard" class="grid gap-4">
                 <!-- 공지사항이 여기에 동적으로 생성됨 -->
+            </div>
+        </div>
+
+        <!-- Branch Tabs -->
+        <div class="mb-4">
+            <div id="branchTabs" class="flex gap-2 overflow-x-auto pb-1">
+                <button onclick="selectBranch('')" class="branch-tab active px-4 py-2 rounded-lg font-medium transition" data-branch="">전체</button>
             </div>
         </div>
 
@@ -150,6 +173,14 @@
                 </div>
             </div>
 
+            <!-- Branch Comparison -->
+            <div id="branchComparison" class="mb-8">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">지점별 비교</h2>
+                <div id="branchCards" class="grid md:grid-cols-3 gap-4">
+                    <!-- 지점별 카드가 여기에 동적으로 생성됨 -->
+                </div>
+            </div>
+
             <!-- Record Count -->
             <div class="text-center text-gray-500 text-sm">
                 <span id="recordCount">0</span>개 레코드 조회됨
@@ -225,42 +256,97 @@
 
     <script>
         let funnelChart = null;
+        let selectedBranch = '';
+        let allMembers = [];
+        let branchList = [];
 
         // 페이지 로드 시 사번 목록 가져오기
         document.addEventListener('DOMContentLoaded', async () => {
-            await loadMembers();
-
-            // 기본 날짜 설정 (종료일: 오늘, 시작일: 7일 전)
+            // 기본 날짜 설정 (종료일: 오늘, 시작일: 7일 전) — 로컬 타임존(KST) 기준
+            const pad = n => String(n).padStart(2, '0');
+            const localDateStr = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
             const now = new Date();
             const sevenDaysAgo = new Date(now);
             sevenDaysAgo.setDate(now.getDate() - 7);
-            document.getElementById('startDate').value = sevenDaysAgo.toISOString().split('T')[0];
-            document.getElementById('endDate').value = now.toISOString().split('T')[0];
+            document.getElementById('startDate').value = localDateStr(sevenDaysAgo);
+            document.getElementById('endDate').value = localDateStr(now);
 
-            // 초기 데이터 로드
+            await loadMembers();
             await loadData();
+            loadKanban(); // 공지사항 보드 로드 (DOMContentLoaded 중복 등록 제거)
         });
+
+        // 사번 → 이름 캐시
+        let memberNameMap = {};
 
         async function loadMembers() {
             try {
                 const response = await fetch('/api/members');
+                if (!response.ok) {
+                    throw new Error(`멤버 목록 조회 실패: ${response.status}`);
+                }
                 const data = await response.json();
 
-                if (!response.ok) {
-                    console.error('Members API error:', data.error || response.status);
-                    return;
-                }
+                allMembers = data.members || [];
+                branchList = data.branches || [];
 
-                const select = document.getElementById('memberSelect');
-                data.members.forEach(member => {
-                    const option = document.createElement('option');
-                    option.value = member;
-                    option.textContent = member;
-                    select.appendChild(option);
+                // 지점 탭 생성
+                const tabContainer = document.getElementById('branchTabs');
+                branchList.forEach(b => {
+                    const btn = document.createElement('button');
+                    btn.className = 'branch-tab px-4 py-2 rounded-lg font-medium transition';
+                    btn.dataset.branch = b.key;
+                    btn.textContent = `${b.name} (${b.memberCount})`;
+                    btn.onclick = () => selectBranch(b.key);
+                    tabContainer.appendChild(btn);
                 });
+
+                // 사번 드롭다운 채우기
+                populateMemberSelect('');
+
             } catch (error) {
                 console.error('Error loading members:', error);
             }
+        }
+
+        function populateMemberSelect(branchKey) {
+            const select = document.getElementById('memberSelect');
+            select.innerHTML = '<option value="">전체</option>';
+
+            const filtered = branchKey
+                ? allMembers.filter(m => m.branch === branchKey)
+                : allMembers;
+
+            filtered.forEach(member => {
+                const option = document.createElement('option');
+                option.value = member.id;
+                const label = member.name ? `${member.name} (${member.id})` : String(member.id);
+                option.textContent = label;
+                select.appendChild(option);
+                if (member.name) memberNameMap[member.id] = member.name;
+            });
+        }
+
+        function selectBranch(branchKey) {
+            selectedBranch = branchKey;
+
+            // 탭 활성 상태 갱신
+            document.querySelectorAll('.branch-tab').forEach(tab => {
+                const isActive = tab.dataset.branch === branchKey;
+                tab.classList.toggle('active', isActive);
+                tab.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            });
+
+            // 사번 드롭다운을 해당 지점 멤버로 필터
+            populateMemberSelect(branchKey);
+
+            // 데이터 새로 로드
+            loadData();
+        }
+
+        function getMemberLabel(memberId) {
+            const name = memberNameMap[memberId];
+            return name ? `${name} (${memberId})` : String(memberId);
         }
 
         async function loadData() {
@@ -275,16 +361,16 @@
 
             try {
                 const params = new URLSearchParams();
+                if (selectedBranch) params.append('branch', selectedBranch);
                 if (memberId) params.append('memberId', memberId);
                 if (startDate) params.append('startDate', startDate);
                 if (endDate) params.append('endDate', endDate);
 
                 const response = await fetch(`/api/activity?${params}`);
-                const data = await response.json();
-
                 if (!response.ok) {
-                    throw new Error(data.error || data.message || `서버 오류 (${response.status})`);
+                    throw new Error(`활동 데이터 조회 실패: ${response.status}`);
                 }
+                const data = await response.json();
 
                 document.getElementById('loading').classList.add('hidden');
 
@@ -309,11 +395,14 @@
                 // 랭킹 업데이트
                 updateRanking(data.ranking);
 
+                // 지점별 비교 업데이트
+                updateBranchComparison(data.branchStats);
+
                 document.getElementById('dashboard').classList.remove('hidden');
             } catch (error) {
                 console.error('Error loading data:', error);
                 document.getElementById('loading').classList.add('hidden');
-                alert('데이터 로딩 중 오류가 발생했습니다.\n' + error.message);
+                alert('데이터 로딩 중 오류가 발생했습니다.');
             }
         }
 
@@ -339,7 +428,8 @@
                         borderColor: colors,
                         borderWidth: 1,
                         borderRadius: 8,
-                        barThickness: 80
+                        barPercentage: 0.6,
+                        categoryPercentage: 0.8
                     }]
                 },
                 options: {
@@ -392,7 +482,7 @@
             let html = '';
 
             // 1등 표시
-            const firstMembers = rankData.first.map(e => e.memberId).join(', ');
+            const firstMembers = rankData.first.map(e => escapeHtml(getMemberLabel(e.memberId))).join(', ');
             const firstValue = rankData.first[0].value;
             const isTie1st = rankData.first.length > 1;
 
@@ -411,7 +501,7 @@
 
             // 2등 표시 (있는 경우에만)
             if (rankData.second.length > 0) {
-                const secondMembers = rankData.second.map(e => e.memberId).join(', ');
+                const secondMembers = rankData.second.map(e => escapeHtml(getMemberLabel(e.memberId))).join(', ');
                 const secondValue = rankData.second[0].value;
                 const isTie2nd = rankData.second.length > 1;
 
@@ -430,6 +520,56 @@
             }
 
             return html;
+        }
+
+        // ============ 지점별 비교 ============
+        const branchColors = {
+            nice:     { bg: 'from-teal-500 to-teal-600',   light: 'text-teal-100' },
+            alpha:    { bg: 'from-indigo-500 to-indigo-600', light: 'text-indigo-100' },
+            infinity: { bg: 'from-rose-500 to-rose-600',    light: 'text-rose-100' }
+        };
+
+        function updateBranchComparison(branchStats) {
+            const container = document.getElementById('branchCards');
+            if (!branchStats) {
+                container.innerHTML = '';
+                return;
+            }
+
+            container.innerHTML = Object.entries(branchStats).map(([key, bs]) => {
+                const color = branchColors[key] || { bg: 'from-gray-500 to-gray-600', light: 'text-gray-100' };
+                const otRate = bs.funnel[1].rate;
+                const mcsRate = bs.funnel[2].rate;
+                return `
+                    <div class="bg-gradient-to-br ${color.bg} rounded-xl p-5 text-white">
+                        <div class="flex justify-between items-start mb-3">
+                            <h3 class="font-bold text-lg">${escapeHtml(bs.name)}</h3>
+                            <span class="${color.light} text-sm">${Number(bs.memberCount)}명</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 text-sm">
+                            <div>
+                                <p class="${color.light}">TA</p>
+                                <p class="text-xl font-bold">${bs.totals.TA}</p>
+                            </div>
+                            <div>
+                                <p class="${color.light}">OT</p>
+                                <p class="text-xl font-bold">${bs.totals.OT} <span class="text-sm font-normal">(${otRate}%)</span></p>
+                            </div>
+                            <div>
+                                <p class="${color.light}">MCS</p>
+                                <p class="text-xl font-bold">${bs.totals.MCS} <span class="text-sm font-normal">(${mcsRate}%)</span></p>
+                            </div>
+                            <div>
+                                <p class="${color.light}">소개</p>
+                                <p class="text-xl font-bold">${bs.totals.소개}</p>
+                            </div>
+                        </div>
+                        <div class="mt-3 pt-3 border-t border-white border-opacity-30 text-sm ${color.light}">
+                            제출 ${bs.totals.count}건
+                        </div>
+                    </div>
+                `;
+            }).join('');
         }
 
         // ============ 칸반보드 기능 ============
@@ -626,10 +766,6 @@
             }
         }
 
-        // 페이지 로드 시 칸반도 로드
-        document.addEventListener('DOMContentLoaded', () => {
-            loadKanban();
-        });
     </script>
 </body>
 </html>
