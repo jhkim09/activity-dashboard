@@ -156,6 +156,16 @@ const DATA_CORRECTIONS = [
       field: '본인 사번',
       value: 322915
     }
+  },
+  {
+    // 8448660은 448660의 오타 (박윤정, 강남지점)
+    match: {
+      wrongValue: 8448660
+    },
+    correct: {
+      field: '본인 사번',
+      value: 448660
+    }
   }
 ];
 
