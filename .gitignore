@@ -3,3 +3,7 @@ node_modules/
 .DS_Store
 *.log
 kanban-data.json
+
+# 운영 데이터 (Render Disk)
+data/
+unknown-alerts.json

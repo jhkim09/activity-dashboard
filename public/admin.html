@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Activity Dashboard 관리자</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f5f7fa;
+    color: #1a202c;
+    min-height: 100vh;
+    padding: 24px 16px;
+  }
+  .container { max-width: 1200px; margin: 0 auto; }
+
+  /* Header */
+  header {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header h1 { font-size: 18px; color: #2563eb; }
+  header .meta { color: #94a3b8; font-size: 13px; }
+  header a { color: #64748b; text-decoration: none; font-size: 13px; }
+  header a:hover { color: #2563eb; }
+
+  /* Login */
+  .login-card {
+    max-width: 360px;
+    margin: 80px auto;
+    background: #fff;
+    padding: 32px;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .login-card h2 { font-size: 18px; margin-bottom: 8px; }
+  .login-card p { color: #64748b; font-size: 13px; margin-bottom: 20px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+  .tab-btn {
+    padding: 10px 20px;
+    border: none;
+    background: #fff;
+    border-radius: 8px 8px 0 0;
+    font-size: 14px;
+    cursor: pointer;
+    color: #64748b;
+    transition: all 0.15s;
+  }
+  .tab-btn.active {
+    background: #2563eb;
+    color: #fff;
+    font-weight: 600;
+  }
+
+  /* Cards */
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  .card h3 { font-size: 15px; margin-bottom: 14px; color: #1e293b; }
+
+  /* Form */
+  .form-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  input, select {
+    padding: 9px 12px;
+    border: 1px solid #cbd5e0;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    transition: border 0.15s;
+  }
+  input:focus, select:focus { border-color: #2563eb; }
+  input[type="number"] { width: 130px; }
+  input[type="text"] { flex: 1; min-width: 140px; }
+  button {
+    padding: 9px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-weight: 500;
+  }
+  .btn-primary { background: #2563eb; color: #fff; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-danger { background: #fee2e2; color: #b91c1c; }
+  .btn-danger:hover { background: #fecaca; }
+  .btn-secondary { background: #e2e8f0; color: #475569; }
+  .btn-secondary:hover { background: #cbd5e0; }
+  .btn-ghost { background: transparent; color: #64748b; padding: 6px 10px; font-size: 12px; }
+  .btn-ghost:hover { background: #f1f5f9; color: #2563eb; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; }
+  th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 14px;
+  }
+  th {
+    background: #f8fafc;
+    color: #64748b;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+  }
+  td.actions { text-align: right; white-space: nowrap; }
+  td.actions button { margin-left: 4px; }
+
+  /* Branch grid */
+  .branch-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+  }
+  .branch-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .branch-card .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .branch-card h4 { font-size: 14px; color: #1e293b; }
+  .branch-card .meta { font-size: 11px; color: #94a3b8; font-family: monospace; }
+  .member-list {
+    max-height: 200px;
+    overflow-y: auto;
+    background: #fff;
+    border-radius: 6px;
+    padding: 8px;
+    border: 1px solid #e2e8f0;
+  }
+  .member-list label {
+    display: flex;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .member-list label:hover { background: #f1f5f9; }
+  .member-list input[type="checkbox"] { margin-top: 2px; }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 12px 20px;
+    background: #1e293b;
+    color: #fff;
+    border-radius: 8px;
+    font-size: 14px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    animation: slideUp 0.2s;
+    z-index: 100;
+  }
+  .toast.error { background: #b91c1c; }
+  @keyframes slideUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+
+  .empty {
+    text-align: center;
+    padding: 30px;
+    color: #94a3b8;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div>
+      <h1>📋 Activity Dashboard 관리자</h1>
+      <div class="meta">사번 / 지점 관리</div>
+    </div>
+    <div>
+      <a href="/" target="_blank">→ 메인 대시보드</a>
+      <button id="logoutBtn" class="btn-ghost" style="display:none; margin-left:12px;">로그아웃</button>
+    </div>
+  </header>
+
+  <!-- 로그인 화면 -->
+  <div id="loginView" class="login-card">
+    <h2>🔒 관리자 인증</h2>
+    <p>비밀번호를 입력하세요.</p>
+    <div class="form-row">
+      <input id="pwInput" type="password" placeholder="비밀번호" style="flex:1;" autocomplete="current-password" />
+      <button id="loginBtn" class="btn-primary">로그인</button>
+    </div>
+  </div>
+
+  <!-- 관리자 화면 -->
+  <div id="adminView" style="display:none;">
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="member">사번 관리</button>
+      <button class="tab-btn" data-tab="branch">지점 관리</button>
+    </div>
+
+    <!-- ── 사번 탭 ───────────────────────── -->
+    <div id="tab-member">
+      <div class="card">
+        <h3>➕ 사번 추가</h3>
+        <div class="form-row">
+          <input id="newMemberId" type="number" placeholder="사번 (숫자)" />
+          <input id="newMemberName" type="text" placeholder="이름" />
+          <select id="newMemberBranch">
+            <option value="">무소속</option>
+          </select>
+          <button class="btn-primary" id="addMemberBtn">추가</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>📑 등록 사번 (<span id="memberCount">0</span>)</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>사번</th>
+              <th>이름</th>
+              <th>지점</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="memberTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── 지점 탭 ───────────────────────── -->
+    <div id="tab-branch" style="display:none;">
+      <div class="card">
+        <h3>➕ 지점 추가</h3>
+        <div class="form-row">
+          <input id="newBranchKey" type="text" placeholder="지점 key (영문/숫자)" />
+          <input id="newBranchName" type="text" placeholder="지점 이름 (예: 강남지점)" />
+          <button class="btn-primary" id="addBranchBtn">추가</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>🏢 지점 목록 (<span id="branchCount">0</span>)</h3>
+        <div class="branch-grid" id="branchGrid"></div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+const PW_KEY = '_act_admin_pw';
+let password = sessionStorage.getItem(PW_KEY) || null;
+let cachedData = { members: [], branches: [] };
+
+const $ = id => document.getElementById(id);
+
+function toast(msg, type='') {
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2400);
+}
+
+function escHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;'}[c]));
+}
+
+async function api(method, url, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body !== undefined) opts.body = JSON.stringify({ ...body, password });
+  const res = await fetch(url, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+async function loadData() {
+  try {
+    const data = await fetch('/api/admin/data').then(r => r.json());
+    cachedData = data;
+    renderMembers();
+    renderBranches();
+    populateBranchSelect();
+  } catch (e) {
+    toast('데이터 로드 실패: ' + e.message, 'error');
+  }
+}
+
+function populateBranchSelect() {
+  const sel = $('newMemberBranch');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">무소속</option>' +
+    cachedData.branches.map(b => `<option value="${escHtml(b.key)}">${escHtml(b.name)}</option>`).join('');
+  sel.value = cur;
+}
+
+function renderMembers() {
+  $('memberCount').textContent = cachedData.members.length;
+  const tbody = $('memberTbody');
+  if (cachedData.members.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty">등록된 사번이 없습니다.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = cachedData.members.map(m => {
+    const branchOpts = '<option value="">무소속</option>' +
+      cachedData.branches.map(b =>
+        `<option value="${escHtml(b.key)}" ${m.branch === b.key ? 'selected' : ''}>${escHtml(b.name)}</option>`
+      ).join('');
+    return `
+      <tr data-id="${m.id}">
+        <td><strong>${m.id}</strong></td>
+        <td><input type="text" value="${escHtml(m.name)}" data-field="name" /></td>
+        <td><select data-field="branch">${branchOpts}</select></td>
+        <td class="actions">
+          <button class="btn-secondary save-member">저장</button>
+          <button class="btn-danger delete-member">삭제</button>
+        </td>
+      </tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('.save-member').forEach(btn => {
+    btn.onclick = e => updateMember(parseInt(e.target.closest('tr').dataset.id));
+  });
+  tbody.querySelectorAll('.delete-member').forEach(btn => {
+    btn.onclick = e => deleteMember(parseInt(e.target.closest('tr').dataset.id));
+  });
+}
+
+function renderBranches() {
+  $('branchCount').textContent = cachedData.branches.length;
+  const grid = $('branchGrid');
+  if (cachedData.branches.length === 0) {
+    grid.innerHTML = '<div class="empty">등록된 지점이 없습니다.</div>';
+    return;
+  }
+  grid.innerHTML = cachedData.branches.map(b => {
+    const memberCheckboxes = cachedData.members.map(m => {
+      const checked = (b.members || []).includes(m.id) ? 'checked' : '';
+      return `<label><input type="checkbox" value="${m.id}" ${checked}/> ${m.id} ${escHtml(m.name)}</label>`;
+    }).join('');
+    return `
+      <div class="branch-card" data-key="${escHtml(b.key)}">
+        <div class="header">
+          <div>
+            <h4><input type="text" value="${escHtml(b.name)}" data-field="name" style="width:100%; padding:4px 6px; font-size:14px;"/></h4>
+            <span class="meta">${escHtml(b.key)} · ${b.memberCount}명</span>
+          </div>
+          <button class="btn-danger delete-branch" style="padding:4px 8px; font-size:12px;">삭제</button>
+        </div>
+        <div class="member-list">
+          ${memberCheckboxes || '<div class="empty" style="padding:12px;">사번 없음</div>'}
+        </div>
+        <button class="btn-primary save-branch" style="width:100%; margin-top:10px;">변경 저장</button>
+      </div>`;
+  }).join('');
+
+  grid.querySelectorAll('.save-branch').forEach(btn => {
+    btn.onclick = e => updateBranch(e.target.closest('.branch-card').dataset.key);
+  });
+  grid.querySelectorAll('.delete-branch').forEach(btn => {
+    btn.onclick = e => deleteBranch(e.target.closest('.branch-card').dataset.key);
+  });
+}
+
+// ── 사번 액션 ─────────────────────────────────
+async function addMember() {
+  const id = parseInt($('newMemberId').value);
+  const name = $('newMemberName').value.trim();
+  const branchKey = $('newMemberBranch').value || null;
+  if (!id || !name) return toast('사번과 이름을 입력하세요.', 'error');
+  try {
+    await api('POST', '/api/admin/member', { id, name, branchKey });
+    toast(`사번 ${id} (${name}) 추가됨`);
+    $('newMemberId').value = '';
+    $('newMemberName').value = '';
+    await loadData();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function updateMember(id) {
+  const tr = document.querySelector(`tr[data-id="${id}"]`);
+  const name = tr.querySelector('[data-field="name"]').value.trim();
+  const branchKey = tr.querySelector('[data-field="branch"]').value || null;
+  try {
+    await api('PUT', `/api/admin/member/${id}`, { name, branchKey });
+    toast(`사번 ${id} 저장됨`);
+    await loadData();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteMember(id) {
+  if (!confirm(`사번 ${id}를 삭제하시겠습니까? (모든 지점에서 제거)`)) return;
+  try {
+    await api('DELETE', `/api/admin/member/${id}`);
+    toast(`사번 ${id} 삭제됨`);
+    await loadData();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── 지점 액션 ─────────────────────────────────
+async function addBranch() {
+  const key = $('newBranchKey').value.trim();
+  const name = $('newBranchName').value.trim();
+  if (!key || !name) return toast('지점 key와 이름을 입력하세요.', 'error');
+  try {
+    await api('POST', '/api/admin/branch', { key, name });
+    toast(`지점 ${name} 추가됨`);
+    $('newBranchKey').value = '';
+    $('newBranchName').value = '';
+    await loadData();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function updateBranch(key) {
+  const card = document.querySelector(`.branch-card[data-key="${key}"]`);
+  const name = card.querySelector('[data-field="name"]').value.trim();
+  const members = Array.from(card.querySelectorAll('input[type="checkbox"]:checked'))
+    .map(cb => parseInt(cb.value));
+  try {
+    await api('PUT', `/api/admin/branch/${key}`, { name, members });
+    toast(`지점 ${name} 저장됨`);
+    await loadData();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteBranch(key) {
+  if (!confirm(`지점을 삭제하시겠습니까? (소속 사번은 무소속으로 남습니다)`)) return;
+  try {
+    await api('DELETE', `/api/admin/branch/${key}`);
+    toast(`지점 삭제됨`);
+    await loadData();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── 인증 + 탭 ─────────────────────────────────
+async function tryLogin() {
+  const pw = $('pwInput').value;
+  if (!pw) return toast('비밀번호를 입력하세요.', 'error');
+  // 간이 인증: 무해한 작업으로 비번 검증 (POST /api/admin/branch에 빈 body 보내 권한만 체크는 부적절 → 칸반 미사용 카드 등록 시도)
+  password = pw;
+  try {
+    // 임시 검증: 잘못된 사번 추가로 검증 (성공/실패 모두 비밀번호 자체는 통과해야 응답)
+    const res = await fetch('/api/admin/member', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw, id: 0, name: '' })
+    });
+    if (res.status === 401) {
+      const data = await res.json();
+      toast(data.error || '비밀번호가 틀립니다.', 'error');
+      password = null;
+      return;
+    }
+    // 401이 아니면 비밀번호 통과 (400 등은 비번 외 오류)
+    sessionStorage.setItem(PW_KEY, pw);
+    showAdmin();
+  } catch (e) {
+    toast('로그인 실패: ' + e.message, 'error');
+    password = null;
+  }
+}
+
+function showAdmin() {
+  $('loginView').style.display = 'none';
+  $('adminView').style.display = 'block';
+  $('logoutBtn').style.display = 'inline-block';
+  loadData();
+}
+
+function logout() {
+  sessionStorage.removeItem(PW_KEY);
+  password = null;
+  $('loginView').style.display = 'block';
+  $('adminView').style.display = 'none';
+  $('logoutBtn').style.display = 'none';
+}
+
+// 탭 전환
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    $('tab-member').style.display = tab === 'member' ? 'block' : 'none';
+    $('tab-branch').style.display = tab === 'branch' ? 'block' : 'none';
+  };
+});
+
+$('loginBtn').onclick = tryLogin;
+$('pwInput').addEventListener('keypress', e => { if (e.key === 'Enter') tryLogin(); });
+$('logoutBtn').onclick = logout;
+$('addMemberBtn').onclick = addMember;
+$('addBranchBtn').onclick = addBranch;
+
+// 초기화
+if (password) showAdmin();
+</script>
+</body>
+</html>

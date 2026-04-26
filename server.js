@@ -176,9 +176,17 @@ const EXCLUDED_MEMBERS = [
   20680     // 미등록 사번
 ];
 
-// ============ 유효 사번 + 이름 목록 ============
-// 사번 → 이름 매핑. 여기 없는 사번이 제출되면 make.com으로 알람 발송
-const MEMBER_NAMES = {
+// ============ 사번/지점 데이터 (JSON 파일 기반) ============
+// 운영 시 /data 디스크에 영속, 로컬 개발 시 ./data
+const MEMBERS_FILE = process.env.NODE_ENV === 'production'
+  ? '/data/members.json'
+  : path.join(__dirname, 'data', 'members.json');
+const BRANCHES_FILE = process.env.NODE_ENV === 'production'
+  ? '/data/branches.json'
+  : path.join(__dirname, 'data', 'branches.json');
+
+// 초기 시드 (파일이 없을 때 1회 생성용)
+const SEED_MEMBER_NAMES = {
   42591:  '심종태',
   64089:  '김지훈',
   84730:  '김희경',
@@ -194,22 +202,81 @@ const MEMBER_NAMES = {
   412798: '이은희',
   459595: '박상은'
 };
-const VALID_MEMBERS = Object.keys(MEMBER_NAMES).map(Number);
-
-// ============ 지점별 그룹 ============
-const BRANCHES = {
+const SEED_BRANCHES = {
   nice:     { name: '나이스지점',   members: [42591] },
   alpha:    { name: '알파평택지점', members: [64089, 84730, 206880, 295284, 327693, 412798, 459595] },
-  infinity: { name: '인피니티지점', members: [209475, 251515, 322915, 342394, 377773, 391035] }
+  infinity: { name: '인피니티지점', members: [209475, 251515, 322915, 342394, 377773, 391035] },
+  gangnam:  { name: '강남지점',     members: [] },
+  purple:   { name: 'purple지점',   members: [] }
 };
 
-// 사번 → 지점 키 역매핑
-const MEMBER_BRANCH = {};
-for (const [key, branch] of Object.entries(BRANCHES)) {
-  for (const id of branch.members) {
-    MEMBER_BRANCH[id] = key;
+// 런타임 데이터 (let — 변경 가능)
+let MEMBER_NAMES = {};
+let BRANCHES = {};
+let VALID_MEMBERS = [];
+let MEMBER_BRANCH = {};
+
+function rebuildMemberBranchMap() {
+  MEMBER_BRANCH = {};
+  for (const [key, branch] of Object.entries(BRANCHES)) {
+    for (const id of (branch.members || [])) {
+      MEMBER_BRANCH[id] = key;
+    }
+  }
+  VALID_MEMBERS = Object.keys(MEMBER_NAMES).map(Number);
+}
+
+function loadMembersFile() {
+  try {
+    if (fs.existsSync(MEMBERS_FILE)) {
+      MEMBER_NAMES = JSON.parse(fs.readFileSync(MEMBERS_FILE, 'utf8'));
+      console.log(`[members] ${Object.keys(MEMBER_NAMES).length}명 로드`);
+    } else {
+      MEMBER_NAMES = { ...SEED_MEMBER_NAMES };
+      saveMembersFile();
+      console.log('[members] 시드 데이터로 초기화');
+    }
+  } catch (e) {
+    console.error('[members] 로드 실패, 시드 사용:', e.message);
+    MEMBER_NAMES = { ...SEED_MEMBER_NAMES };
   }
 }
+
+function saveMembersFile() {
+  try {
+    fs.writeFileSync(MEMBERS_FILE, JSON.stringify(MEMBER_NAMES, null, 2));
+  } catch (e) {
+    console.error('[members] 저장 실패:', e.message);
+  }
+}
+
+function loadBranchesFile() {
+  try {
+    if (fs.existsSync(BRANCHES_FILE)) {
+      BRANCHES = JSON.parse(fs.readFileSync(BRANCHES_FILE, 'utf8'));
+      console.log(`[branches] ${Object.keys(BRANCHES).length}개 지점 로드`);
+    } else {
+      BRANCHES = JSON.parse(JSON.stringify(SEED_BRANCHES));
+      saveBranchesFile();
+      console.log('[branches] 시드 데이터로 초기화');
+    }
+  } catch (e) {
+    console.error('[branches] 로드 실패, 시드 사용:', e.message);
+    BRANCHES = JSON.parse(JSON.stringify(SEED_BRANCHES));
+  }
+}
+
+function saveBranchesFile() {
+  try {
+    fs.writeFileSync(BRANCHES_FILE, JSON.stringify(BRANCHES, null, 2));
+  } catch (e) {
+    console.error('[branches] 저장 실패:', e.message);
+  }
+}
+
+loadMembersFile();
+loadBranchesFile();
+rebuildMemberBranchMap();
 
 function getMemberName(memberId) {
   return MEMBER_NAMES[memberId] || String(memberId);
@@ -753,9 +820,179 @@ app.post('/api/kanban/move', checkPassword, (req, res) => {
   res.json({ success: true });
 });
 
+// ============ 관리자 API: 사번/지점 CRUD ============
+// 인증: KANBAN_PASSWORD 재사용 (POST/PUT/DELETE의 body.password)
+
+// 전체 데이터 조회 (관리자 화면용)
+app.get('/api/admin/data', (req, res) => {
+  const members = Object.entries(MEMBER_NAMES).map(([id, name]) => ({
+    id: parseInt(id),
+    name,
+    branch: MEMBER_BRANCH[id] || null,
+  })).sort((a, b) => a.id - b.id);
+
+  const branches = Object.entries(BRANCHES).map(([key, b]) => ({
+    key,
+    name: b.name,
+    members: b.members || [],
+    memberCount: (b.members || []).length,
+  }));
+
+  res.json({ members, branches });
+});
+
+// ── 사번 CRUD ─────────────────────────────────
+app.post('/api/admin/member', checkPassword, (req, res) => {
+  const { id, name, branchKey } = req.body;
+  const memberId = parseInt(id);
+  if (!memberId || memberId <= 0) {
+    return res.status(400).json({ error: '유효한 사번이 필요합니다.' });
+  }
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: '이름이 필요합니다.' });
+  }
+  if (MEMBER_NAMES[memberId]) {
+    return res.status(409).json({ error: '이미 등록된 사번입니다.' });
+  }
+
+  MEMBER_NAMES[memberId] = name.trim();
+  saveMembersFile();
+
+  if (branchKey && BRANCHES[branchKey]) {
+    BRANCHES[branchKey].members = BRANCHES[branchKey].members || [];
+    if (!BRANCHES[branchKey].members.includes(memberId)) {
+      BRANCHES[branchKey].members.push(memberId);
+      saveBranchesFile();
+    }
+  }
+  rebuildMemberBranchMap();
+  res.json({ success: true, member: { id: memberId, name: MEMBER_NAMES[memberId], branch: MEMBER_BRANCH[memberId] || null } });
+});
+
+app.put('/api/admin/member/:id', checkPassword, (req, res) => {
+  const memberId = parseInt(req.params.id);
+  const { name, branchKey } = req.body;
+  if (!MEMBER_NAMES[memberId]) {
+    return res.status(404).json({ error: '사번을 찾을 수 없습니다.' });
+  }
+
+  if (name !== undefined) {
+    if (!name.trim()) return res.status(400).json({ error: '이름은 비울 수 없습니다.' });
+    MEMBER_NAMES[memberId] = name.trim();
+    saveMembersFile();
+  }
+
+  if (branchKey !== undefined) {
+    // 기존 지점에서 제거
+    for (const b of Object.values(BRANCHES)) {
+      b.members = (b.members || []).filter(id => id !== memberId);
+    }
+    // 새 지점에 추가 (null/'' 이면 무소속)
+    if (branchKey && BRANCHES[branchKey]) {
+      BRANCHES[branchKey].members = BRANCHES[branchKey].members || [];
+      if (!BRANCHES[branchKey].members.includes(memberId)) {
+        BRANCHES[branchKey].members.push(memberId);
+      }
+    }
+    saveBranchesFile();
+    rebuildMemberBranchMap();
+  }
+
+  res.json({ success: true, member: { id: memberId, name: MEMBER_NAMES[memberId], branch: MEMBER_BRANCH[memberId] || null } });
+});
+
+app.delete('/api/admin/member/:id', (req, res) => {
+  const { password } = req.body;
+  if (password !== KANBAN_PASSWORD) {
+    return res.status(401).json({ error: '비밀번호가 올바르지 않습니다.' });
+  }
+
+  const memberId = parseInt(req.params.id);
+  if (!MEMBER_NAMES[memberId]) {
+    return res.status(404).json({ error: '사번을 찾을 수 없습니다.' });
+  }
+
+  delete MEMBER_NAMES[memberId];
+  saveMembersFile();
+
+  for (const b of Object.values(BRANCHES)) {
+    b.members = (b.members || []).filter(id => id !== memberId);
+  }
+  saveBranchesFile();
+  rebuildMemberBranchMap();
+
+  res.json({ success: true });
+});
+
+// ── 지점 CRUD ─────────────────────────────────
+app.post('/api/admin/branch', checkPassword, (req, res) => {
+  const { key, name } = req.body;
+  if (!key || !/^[a-zA-Z0-9_-]+$/.test(key)) {
+    return res.status(400).json({ error: '지점 key는 영문/숫자/언더스코어/하이픈만 가능합니다.' });
+  }
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: '지점 이름이 필요합니다.' });
+  }
+  if (BRANCHES[key]) {
+    return res.status(409).json({ error: '이미 존재하는 지점 key입니다.' });
+  }
+
+  BRANCHES[key] = { name: name.trim(), members: [] };
+  saveBranchesFile();
+  res.json({ success: true, branch: { key, ...BRANCHES[key] } });
+});
+
+app.put('/api/admin/branch/:key', checkPassword, (req, res) => {
+  const { key } = req.params;
+  const { name, members } = req.body;
+  if (!BRANCHES[key]) return res.status(404).json({ error: '지점을 찾을 수 없습니다.' });
+
+  if (name !== undefined) {
+    if (!name.trim()) return res.status(400).json({ error: '지점 이름은 비울 수 없습니다.' });
+    BRANCHES[key].name = name.trim();
+  }
+
+  if (Array.isArray(members)) {
+    // 등록된 사번만 받아들임
+    const valid = members.map(Number).filter(id => MEMBER_NAMES[id]);
+    // 다른 지점에서 자동 제거 (한 사번은 한 지점에만)
+    for (const [k, b] of Object.entries(BRANCHES)) {
+      if (k === key) continue;
+      b.members = (b.members || []).filter(id => !valid.includes(id));
+    }
+    BRANCHES[key].members = valid;
+  }
+
+  saveBranchesFile();
+  rebuildMemberBranchMap();
+  res.json({ success: true, branch: { key, ...BRANCHES[key] } });
+});
+
+app.delete('/api/admin/branch/:key', (req, res) => {
+  const { password } = req.body;
+  if (password !== KANBAN_PASSWORD) {
+    return res.status(401).json({ error: '비밀번호가 올바르지 않습니다.' });
+  }
+
+  const { key } = req.params;
+  if (!BRANCHES[key]) return res.status(404).json({ error: '지점을 찾을 수 없습니다.' });
+
+  // 소속 사번은 무소속으로 (사번 자체는 유지)
+  delete BRANCHES[key];
+  saveBranchesFile();
+  rebuildMemberBranchMap();
+
+  res.json({ success: true });
+});
+
 // 메인 페이지
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// 관리자 페이지
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 app.listen(PORT, () => {
