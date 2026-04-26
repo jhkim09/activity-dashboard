@@ -293,7 +293,10 @@ function escHtml(s) {
 
 async function api(method, url, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (body !== undefined) opts.body = JSON.stringify({ ...body, password });
+  // GET 외에는 항상 password 포함 (DELETE도 body 필요)
+  if (method !== 'GET') {
+    opts.body = JSON.stringify({ ...(body || {}), password });
+  }
   const res = await fetch(url, opts);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
