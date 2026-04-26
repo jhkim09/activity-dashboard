@@ -51,6 +51,25 @@
             outline: 2px solid #2563EB;
             outline-offset: 2px;
         }
+        /* 메인 탭 (퍼널 / 제출 현황) */
+        .main-tab {
+            padding: 10px 22px;
+            background: white;
+            color: #6B7280;
+            font-weight: 600;
+            border-radius: 10px 10px 0 0;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .main-tab:hover {
+            color: #2563EB;
+        }
+        .main-tab.active {
+            color: #2563EB;
+            border-bottom-color: #2563EB;
+            background: #EFF6FF;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -116,8 +135,15 @@
             <p class="mt-4 text-gray-600">데이터 로딩 중...</p>
         </div>
 
+        <!-- Main Tabs -->
+        <div class="flex gap-1 border-b border-gray-200 mb-0">
+            <button class="main-tab active" data-main-tab="funnel" onclick="switchMainTab('funnel')">퍼널 분석</button>
+            <button class="main-tab" data-main-tab="stats" onclick="switchMainTab('stats')">제출 현황</button>
+        </div>
+
         <!-- Funnel Chart -->
         <div id="dashboard" class="hidden">
+          <div id="viewFunnel">
             <!-- Summary Cards -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                 <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white funnel-stage">
@@ -185,6 +211,70 @@
             <div class="text-center text-gray-500 text-sm">
                 <span id="recordCount">0</span>개 레코드 조회됨
             </div>
+          </div><!-- /viewFunnel -->
+
+          <!-- 제출 현황 탭 -->
+          <div id="viewStats" class="hidden">
+            <!-- 요약 카드 -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 text-white">
+                    <p class="text-blue-100 text-sm font-medium">총 제출</p>
+                    <p id="stats-total" class="text-3xl font-bold mt-2">0</p>
+                </div>
+                <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-5 text-white">
+                    <p class="text-green-100 text-sm font-medium">제출 사번 수</p>
+                    <p id="stats-submitters" class="text-3xl font-bold mt-2">0</p>
+                </div>
+                <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-5 text-white">
+                    <p class="text-purple-100 text-sm font-medium">등록 사번 수</p>
+                    <p id="stats-registered" class="text-3xl font-bold mt-2">0</p>
+                </div>
+                <div class="bg-gradient-to-br from-red-500 to-red-600 rounded-xl p-5 text-white">
+                    <p class="text-red-100 text-sm font-medium">미입력 사번</p>
+                    <p id="stats-never" class="text-3xl font-bold mt-2">0</p>
+                </div>
+            </div>
+
+            <!-- 사번별 제출 횟수 표 -->
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-xl font-bold text-gray-800">사번별 제출 횟수</h2>
+                    <div class="flex gap-2 text-sm">
+                        <button id="stats-sort-count" class="px-3 py-1 bg-blue-600 text-white rounded">제출 많은 순</button>
+                        <button id="stats-sort-name" class="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">이름순</button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="bg-gray-50 text-gray-600 text-xs uppercase">
+                                <th class="text-left px-4 py-3">사번</th>
+                                <th class="text-left px-4 py-3">이름</th>
+                                <th class="text-left px-4 py-3">지점</th>
+                                <th class="text-right px-4 py-3">제출 횟수</th>
+                                <th class="text-left px-4 py-3">마지막 입력일</th>
+                            </tr>
+                        </thead>
+                        <tbody id="statsTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 미입력 사번 명단 -->
+            <div id="neverSubmittedSection" class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-3 flex items-center gap-2">
+                    <span class="text-red-500">⚠️</span> 미입력 사번
+                </h2>
+                <p class="text-sm text-gray-500 mb-4">선택 기간 동안 1건도 제출하지 않은 등록 사번입니다.</p>
+                <div id="neverSubmittedList" class="flex flex-wrap gap-2"></div>
+            </div>
+
+            <!-- 일별 트렌드 -->
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">일별 제출 트렌드</h2>
+                <canvas id="trendChart" height="80"></canvas>
+            </div>
+          </div><!-- /viewStats -->
         </div>
 
         <!-- Empty State -->
@@ -349,7 +439,32 @@
             return name ? `${name} (${memberId})` : String(memberId);
         }
 
+        // ── 메인 탭 (퍼널 / 제출 현황) ─────────────────
+        let activeMainTab = 'funnel';
+        let trendChartInstance = null;
+        let cachedStats = null;
+        let statsSortMode = 'count'; // 'count' | 'name'
+
+        function switchMainTab(tab) {
+            activeMainTab = tab;
+            document.querySelectorAll('.main-tab').forEach(b => {
+                b.classList.toggle('active', b.dataset.mainTab === tab);
+            });
+            document.getElementById('viewFunnel').classList.toggle('hidden', tab !== 'funnel');
+            document.getElementById('viewStats').classList.toggle('hidden', tab !== 'stats');
+            // 활성 탭에 맞게 데이터 로드
+            loadData();
+        }
+
         async function loadData() {
+            if (activeMainTab === 'stats') {
+                await loadStatsData();
+            } else {
+                await loadFunnelData();
+            }
+        }
+
+        async function loadFunnelData() {
             const memberId = document.getElementById('memberSelect').value;
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
@@ -405,6 +520,127 @@
                 alert('데이터 로딩 중 오류가 발생했습니다.');
             }
         }
+
+        // ── 제출 현황 로드 ─────────────────────────────
+        async function loadStatsData() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('dashboard').classList.add('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+
+            try {
+                const params = new URLSearchParams();
+                if (selectedBranch) params.append('branch', selectedBranch);
+                if (startDate) params.append('startDate', startDate);
+                if (endDate) params.append('endDate', endDate);
+
+                const response = await fetch(`/api/submission-stats?${params}`);
+                if (!response.ok) throw new Error(`제출 현황 조회 실패: ${response.status}`);
+                const data = await response.json();
+
+                document.getElementById('loading').classList.add('hidden');
+                cachedStats = data;
+                renderStats();
+                document.getElementById('dashboard').classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading stats:', error);
+                document.getElementById('loading').classList.add('hidden');
+                alert('제출 현황 로딩 중 오류: ' + error.message);
+            }
+        }
+
+        function renderStats() {
+            if (!cachedStats) return;
+            const data = cachedStats;
+
+            // 요약 카드
+            document.getElementById('stats-total').textContent = data.totals.totalSubmissions.toLocaleString();
+            document.getElementById('stats-submitters').textContent = data.totals.uniqueSubmitters;
+            document.getElementById('stats-registered').textContent = data.totals.registeredMembers;
+            document.getElementById('stats-never').textContent = data.totals.neverSubmittedCount;
+
+            // 사번별 표
+            const tbody = document.getElementById('statsTbody');
+            const list = [...data.byMember];
+            if (statsSortMode === 'name') {
+                list.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+            } else {
+                list.sort((a, b) => b.count - a.count);
+            }
+            if (list.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-gray-400 py-8">제출 데이터가 없습니다.</td></tr>';
+            } else {
+                tbody.innerHTML = list.map(m => {
+                    const branchLabel = m.branchName || (m.registered ? '<span class="text-gray-400">무소속</span>' : '<span class="text-red-500">미등록</span>');
+                    const lastDate = m.lastSubmittedAt || '-';
+                    const nameLabel = m.registered ? m.name : `<span class="text-red-500">${m.name}</span>`;
+                    return `
+                        <tr class="border-t border-gray-100 hover:bg-gray-50">
+                            <td class="px-4 py-2.5 font-mono text-gray-600">${m.memberId}</td>
+                            <td class="px-4 py-2.5 font-medium">${nameLabel}</td>
+                            <td class="px-4 py-2.5">${branchLabel}</td>
+                            <td class="px-4 py-2.5 text-right font-bold text-blue-600">${m.count}</td>
+                            <td class="px-4 py-2.5 text-gray-500">${lastDate}</td>
+                        </tr>`;
+                }).join('');
+            }
+
+            // 미입력 명단
+            const neverSection = document.getElementById('neverSubmittedSection');
+            const neverList = document.getElementById('neverSubmittedList');
+            if (data.neverSubmitted.length === 0) {
+                neverList.innerHTML = '<p class="text-green-600 font-medium">👍 모든 등록 사번이 입력했습니다.</p>';
+            } else {
+                neverList.innerHTML = data.neverSubmitted.map(m => `
+                    <span class="inline-flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 px-3 py-1.5 rounded-lg text-sm">
+                        <span class="font-mono text-xs text-red-500">${m.memberId}</span>
+                        <strong>${m.name}</strong>
+                        ${m.branchName ? `<span class="text-xs text-red-400">· ${m.branchName}</span>` : ''}
+                    </span>
+                `).join('');
+            }
+
+            // 일별 트렌드 차트
+            const days = Object.keys(data.trend).sort();
+            const counts = days.map(d => data.trend[d]);
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            if (trendChartInstance) trendChartInstance.destroy();
+            trendChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: days,
+                    datasets: [{
+                        label: '일별 제출 건수',
+                        data: counts,
+                        backgroundColor: '#3B82F6',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+                }
+            });
+        }
+
+        // 정렬 버튼 (DOM 로드 후 바인딩)
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('stats-sort-count').addEventListener('click', () => {
+                statsSortMode = 'count';
+                document.getElementById('stats-sort-count').className = 'px-3 py-1 bg-blue-600 text-white rounded';
+                document.getElementById('stats-sort-name').className = 'px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300';
+                renderStats();
+            });
+            document.getElementById('stats-sort-name').addEventListener('click', () => {
+                statsSortMode = 'name';
+                document.getElementById('stats-sort-name').className = 'px-3 py-1 bg-blue-600 text-white rounded';
+                document.getElementById('stats-sort-count').className = 'px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300';
+                renderStats();
+            });
+        });
 
         function updateChart(funnel) {
             const ctx = document.getElementById('funnelChart').getContext('2d');

@@ -820,6 +820,109 @@ app.post('/api/kanban/move', checkPassword, (req, res) => {
   res.json({ success: true });
 });
 
+// ============ 제출 현황 통계 API ============
+// GET /api/submission-stats?startDate&endDate&branch
+// - 사번별 제출 횟수, 미입력 사번, 일별 트렌드
+app.get('/api/submission-stats', async (req, res) => {
+  try {
+    const { startDate, endDate, branch } = req.query;
+    const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+    let allSubmissions = await fetchAllSubmissions();
+
+    // 날짜 필터 (날짜 필드 기준)
+    if (startDate && DATE_RE.test(startDate)) {
+      allSubmissions = allSubmissions.filter(sub => {
+        const d = getFieldValue(sub, '날짜');
+        return d && d >= startDate;
+      });
+    }
+    if (endDate && DATE_RE.test(endDate)) {
+      allSubmissions = allSubmissions.filter(sub => {
+        const d = getFieldValue(sub, '날짜');
+        return d && d <= endDate;
+      });
+    }
+
+    // 지점 필터
+    if (branch && BRANCHES[branch]) {
+      const branchMembers = BRANCHES[branch].members || [];
+      allSubmissions = allSubmissions.filter(sub => {
+        const id = Number(getFieldValue(sub, '본인 사번'));
+        return branchMembers.includes(id);
+      });
+    }
+
+    // 사번별 집계
+    const memberCount = {};       // memberId → count
+    const memberLastDate = {};    // memberId → 최근 날짜
+    const dailyTrend = {};        // YYYY-MM-DD → count
+
+    for (const sub of allSubmissions) {
+      const id = Number(getFieldValue(sub, '본인 사번'));
+      if (!id || id <= 0) continue;
+
+      memberCount[id] = (memberCount[id] || 0) + 1;
+      const d = getFieldValue(sub, '날짜');
+      if (d) {
+        if (!memberLastDate[id] || d > memberLastDate[id]) memberLastDate[id] = d;
+        dailyTrend[d] = (dailyTrend[d] || 0) + 1;
+      }
+    }
+
+    // byMember (등록 사번 + 미등록 사번 모두)
+    const byMember = [];
+    const submittedIds = new Set();
+
+    for (const [id, count] of Object.entries(memberCount)) {
+      const memberId = Number(id);
+      submittedIds.add(memberId);
+      const branchKey = MEMBER_BRANCH[memberId] || null;
+      byMember.push({
+        memberId,
+        name: getMemberName(memberId),
+        registered: !!MEMBER_NAMES[memberId],
+        branch: branchKey,
+        branchName: branchKey ? BRANCHES[branchKey]?.name : null,
+        count,
+        lastSubmittedAt: memberLastDate[memberId] || null,
+      });
+    }
+    byMember.sort((a, b) => b.count - a.count);
+
+    // 미입력 사번 (등록되었지만 기간 내 제출 없음)
+    // branch 필터가 있으면 해당 지점 사번만, 없으면 전체 등록 사번
+    const targetMemberIds = branch && BRANCHES[branch]
+      ? (BRANCHES[branch].members || [])
+      : Object.keys(MEMBER_NAMES).map(Number);
+
+    const neverSubmitted = targetMemberIds
+      .filter(id => !submittedIds.has(id))
+      .map(id => ({
+        memberId: id,
+        name: MEMBER_NAMES[id],
+        branch: MEMBER_BRANCH[id] || null,
+        branchName: MEMBER_BRANCH[id] ? BRANCHES[MEMBER_BRANCH[id]]?.name : null,
+      }));
+
+    res.json({
+      byMember,
+      totals: {
+        totalSubmissions: allSubmissions.length,
+        uniqueSubmitters: byMember.length,
+        registeredMembers: targetMemberIds.length,
+        neverSubmittedCount: neverSubmitted.length,
+      },
+      neverSubmitted,
+      trend: dailyTrend,
+      filters: { startDate: startDate || null, endDate: endDate || null, branch: branch || null },
+    });
+  } catch (error) {
+    console.error('Error fetching submission stats:', error);
+    res.status(500).json({ error: 'Failed to fetch submission stats' });
+  }
+});
+
 // ============ 관리자 API: 사번/지점 CRUD ============
 // 인증: KANBAN_PASSWORD 재사용 (POST/PUT/DELETE의 body.password)
 
